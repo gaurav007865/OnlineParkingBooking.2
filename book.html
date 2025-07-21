@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book Parking Slot | Smart Parking</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <nav class="navbar">
+      <div class="logo-title">
+        <img src="assets/logo.png" alt="Smart Parking Logo" class="logo"/>
+        <span class="title">Smart Parking</span>
+      </div>
+      <ul class="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="book.html" class="active">Book Slot</a></li>
+        <li><a href="view.html">View Slots</a></li>
+        <li><a href="#contact">Contact Us</a></li>
+      </ul>
+    </nav>
+  </header>
+  <main>
+    <section class="booking-section">
+      <h2>Book Your Parking Slot</h2>
+      <form id="bookingForm" class="booking-form">
+        <div class="form-group">
+          <label for="name">Name</label>
+          <input type="text" id="name" name="name" required>
+        </div>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required>
+        </div>
+        <div class="form-group">
+          <label for="vehicleNumber">Vehicle Number</label>
+          <input type="text" id="vehicleNumber" name="vehicleNumber" required>
+        </div>
+        <div class="form-group">
+          <label for="vehicleType">Vehicle Type</label>
+          <select id="vehicleType" name="vehicleType" required>
+            <option value="">Select</option>
+            <option value="Car">Car</option>
+            <option value="Bike">Bike</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="timeSlot">Time Slot</label>
+          <select id="timeSlot" name="timeSlot" required>
+            <option value="">Select</option>
+            <option value="8:00-10:00">8:00-10:00</option>
+            <option value="10:00-12:00">10:00-12:00</option>
+            <option value="12:00-14:00">12:00-14:00</option>
+            <option value="14:00-16:00">14:00-16:00</option>
+            <option value="16:00-18:00">16:00-18:00</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="slotNumber">Slot Number</label>
+          <select id="slotNumber" name="slotNumber" required>
+            <option value="">Select</option>
+            <!-- Options will be filled dynamically by JS -->
+          </select>
+        </div>
+        <button type="submit" class="cta-btn">Book Slot</button>
+      </form>
+      <div id="receiptModal" class="receipt-modal" style="display:none;">
+        <div class="receipt-content">
+          <h3>Booking Successful!</h3>
+          <div id="receiptDetails"></div>
+          <button id="downloadReceipt" class="cta-btn">Download Receipt</button>
+          <button id="sendEmail" class="cta-btn">Send Email</button>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer id="contact">
+    <p>Contact Us: smartparking@email.com | +1 234 567 890</p>
+    <p>&copy; 2024 Smart Parking. All rights reserved.</p>
+  </footer>
+  <script src="script.js"></script>
+</body>
+</html> 

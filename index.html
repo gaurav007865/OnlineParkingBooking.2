@@ -1,215 +1,218 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parking Booking System</title>
-    <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Parking System</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Parking Booking System</h1>
-        </header>
-        
-        <main>
-            <div class="booking-form">
-                <h2>Book Your Parking Slot</h2>
-                <form id="parkingForm">
-                    <div class="form-group">
-                        <label for="vehicleNumber">Vehicle Number:</label>
-                        <input type="text" id="vehicleNumber" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="vehicleType">Vehicle Type:</label>
-                        <select id="vehicleType" required>
-                            <option value="car">Car</option>
-                            <option value="bike">Bike</option>
-                            <option value="truck">Truck</option>
-                            <option value="scanner">Scanner</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="entryDate">Entry Date:</label>
-                        <input type="date" id="entryDate" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="entryTime">Entry Time:</label>
-                        <input type="time" id="entryTime" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="duration">Duration (hours):</label>
-                        <input type="number" id="duration" min="1" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="userEmail">Email Address:</label>
-                        <input type="email" id="userEmail" required>
-                    </div>
-                    
-                    <!-- Location Selection Section -->
-                    <div class="location-section">
-                        <h3>Select Parking Location</h3>
-                        
-                        <div class="location-selector">
-                            <div class="form-group">
-                                <label for="locationDropdown">Choose Parking Location:</label>
-                                <select id="locationDropdown" class="location-dropdown">
-                                    <option value="">Select a parking location...</option>
-                                </select>
-                            </div>
-                            
-                            <div class="location-info">
-                                <div class="location-details" id="locationDetails" style="display: none;">
-                                    <h4>📍 Location Details</h4>
-                                    <div class="location-card">
-                                        <div class="location-name" id="selectedLocationName"></div>
-                                        <div class="location-address" id="selectedLocationAddress"></div>
-                                        <div class="location-stats">
-                                            <span class="slots-info">🅿️ Available Slots: <span id="selectedLocationSlots"></span></span>
-                                            <span class="rate-info">💰 Rate Multiplier: <span id="selectedLocationRate"></span>x</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="selected-location">
-                            <h4>Selected Location:</h4>
-                            <p id="selectedLocationText">No location selected</p>
-                            <input type="hidden" id="selectedLatitude">
-                            <input type="hidden" id="selectedLongitude">
-                            <input type="hidden" id="selectedAddress">
-                        </div>
-                    </div>
-                    
-                    <div class="parking-slots">
-                        <h3>Select Parking Slot</h3>
-                        <div id="slotContainer" class="slot-container"></div>
-                    </div>
-                    
-                    <div class="payment-section">
-                        <h3>Payment Details</h3>
-                        <div class="form-group">
-                            <label for="paymentMethod">Payment Method:</label>
-                            <select id="paymentMethod" required>
-                                <option value="card">Card Payment</option>
-                                <option value="qr">QR Payment</option>
-                            </select>
-                        </div>
-                        
-                        <div id="amountDisplay" class="amount-display">
-                            <label for="amount">Amount to Pay:</label>
-                            <input type="text" id="amount" readonly>
-                        </div>
-                        
-                        <div id="cardPaymentDetails" class="payment-details">
-                            <div class="form-group">
-                                <label for="cardNumber">Card Number:</label>
-                                <input type="text" id="cardNumber" pattern="[0-9]{16}" placeholder="Enter 16-digit card number">
-                            </div>
-                            <div class="form-group">
-                                <label for="cardExpiry">Card Expiry:</label>
-                                <input type="text" id="cardExpiry" pattern="(0[1-9]|1[0-2])/[0-9]{2}" placeholder="MM/YY">
-                            </div>
-                            <div class="form-group">
-                                <label for="cardCvv">CVV:</label>
-                                <input type="password" id="cardCvv" pattern="[0-9]{3}" placeholder="Enter 3-digit CVV">
-                            </div>
-                        </div>
-                        
-                        <div id="qrPaymentDetails" class="payment-details" style="display: none;">
-                            <div class="qr-payment-container">
-                                <div class="qr-info">
-                                    <h4>Scan QR Code to Pay</h4>
-                                    <p>Use any UPI app to scan the QR code below</p>
-                                </div>
-                                <div id="qrCode" class="qr-container"></div>
-                                <div class="qr-payment-status">
-                                    <div id="paymentStatus" class="payment-status pending">
-                                        <span class="status-icon">⏳</span>
-                                        <span class="status-text">Waiting for Payment</span>
-                                    </div>
-                                    <button type="button" id="verifyPaymentBtn" class="btn-verify" disabled>
-                                        Verify Payment
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <button type="submit" class="btn-book" id="bookButton">Book Now</button>
-                    </div>
-                    
-
-                </form>
-            </div>
-            
-            <div class="bookings-list">
-                <h2>Your Bookings</h2>
-                <div id="bookingsList"></div>
-            </div>
-        </main>
-    </div>
-
-    <!-- Payment Verification Modal -->
-    <div id="paymentModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Payment Verification</h3>
-                <span class="close">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div id="verificationStatus" class="verification-status">
-                    <div class="spinner"></div>
-                    <p>Verifying payment...</p>
-                </div>
-                <div id="verificationResult" class="verification-result" style="display: none;">
-                    <div class="result-icon"></div>
-                    <h4 id="resultTitle"></h4>
-                    <p id="resultMessage"></p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button id="confirmBookingBtn" class="btn-confirm" style="display: none;">📋 Confirm Booking</button>
-                <button id="closeModalBtn" class="btn-close">Close</button>
-            </div>
+  <!-- Login Modal -->
+  <div id="loginModal" class="receipt-modal" style="display:none;z-index:200;">
+    <div class="receipt-content" style="min-width:320px;">
+      <h3>Login</h3>
+      <form id="loginForm" class="booking-form">
+        <div class="form-group">
+          <label for="loginId">ID</label>
+          <input type="text" id="loginId" name="loginId" placeholder="User ID" required>
         </div>
-    </div>
-
-    <!-- Booking Success Modal -->
-    <div id="bookingSuccessModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header" style="background-color: #28a745;">
-                <h3>🎉 Booking Confirmed!</h3>
-                <span class="close" onclick="document.getElementById('bookingSuccessModal').style.display='none'">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="booking-success-content">
-                    <div class="success-icon">✅</div>
-                    <h4>Your parking booking has been confirmed!</h4>
-                    <div id="bookingDetails" class="booking-details-display">
-                        <!-- Booking details will be populated here -->
-                    </div>
-                    <div class="email-notification">
-                        <p>📧 A detailed receipt has been sent to your email address.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button onclick="document.getElementById('bookingSuccessModal').style.display='none'" class="btn-close">Close</button>
-            </div>
+        <div class="form-group">
+          <label for="loginEmail">Email</label>
+          <input type="email" id="loginEmail" name="loginEmail" placeholder="Email" required>
         </div>
+        <div class="form-group">
+          <label for="loginPassword">Password</label>
+          <div style="position: relative;">
+            <input type="password" id="loginPassword" name="loginPassword" placeholder="Password" required>
+            <button type="button" id="togglePassword" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">👁️</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="loginRole">Role</label>
+          <select id="loginRole" name="loginRole" required>
+            <option value="">Select Role</option>
+            <option value="admin">Admin</option>
+            <option value="user">User</option>
+          </select>
+        </div>
+        <button type="submit" class="cta-btn">Login</button>
+      </form>
     </div>
-
-    <script src="script.js"></script>
+  </div>
+  <header>
+    <nav class="navbar">
+      <div class="logo-title">
+        <img src="assets/logo.png" alt="Smart Parking Logo" class="logo"/>
+        <span class="title">Smart Parking</span>
+      </div>
+      <ul class="nav-links">
+        <li><a href="#home">Home</a></li>
+        <li><a href="#booking">Book Slot</a></li>
+        <li><a href="#view">View Slots</a></li>
+        <li><a href="#contact">Contact Us</a></li>
+      </ul>
+      <button id="darkModeToggle" title="Toggle Dark Mode">🌙</button>
+      <button id="loginBtn" class="cta-btn" style="margin-left:1rem;">Login</button>
+      <button id="logoutBtn" class="cta-btn" style="margin-left:1rem;display:none;">Logout</button>
+      <button id="downloadReceiptBtn" class="cta-btn" style="margin-left:1rem;display:none;">📷 Download Receipt</button>
+    </nav>
+  </header>
+  <main>
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+      <div class="hero-bg"></div>
+      <div class="hero-content">
+        <h1>Welcome to Smart Parking</h1>
+        <p>Book your parking slot online, hassle-free!</p>
+        <a href="#booking" class="cta-btn">Book Now</a>
+      </div>
+    </section>
+    <!-- Booking Section -->
+    <section id="booking" class="booking-section">
+      <h2>Book Your Parking Slot</h2>
+      <form id="bookingForm" class="booking-form">
+        <div class="form-group">
+          <label for="name">Name</label>
+          <input type="text" id="name" name="name" required>
+        </div>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required>
+        </div>
+        <div class="form-group">
+          <label for="vehicleNumber">Vehicle Number</label>
+          <input type="text" id="vehicleNumber" name="vehicleNumber" required>
+        </div>
+        <div class="form-group">
+          <label for="vehicleType">Vehicle Type</label>
+          <select id="vehicleType" name="vehicleType" required>
+            <option value="">Select</option>
+            <option value="Car">Car</option>
+            <option value="Bike">Bike</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="timeSlot">Time Slot</label>
+          <select id="timeSlot" name="timeSlot" required>
+            <option value="">Select</option>
+            <option value="6:00 AM-8:00 AM">6:00 AM-8:00 AM</option>
+            <option value="8:00 AM-10:00 AM">8:00 AM-10:00 AM</option>
+            <option value="10:00 AM-12:00 PM">10:00 AM-12:00 PM</option>
+            <option value="12:00 PM-2:00 PM">12:00 PM-2:00 PM</option>
+            <option value="2:00 PM-4:00 PM">2:00 PM-4:00 PM</option>
+            <option value="4:00 PM-6:00 PM">4:00 PM-6:00 PM</option>
+            <option value="6:00 PM-8:00 PM">6:00 PM-8:00 PM</option>
+            <option value="8:00 PM-10:00 PM">8:00 PM-10:00 PM</option>
+            <option value="Whole Day (6:00 AM-10:00 PM)">Whole Day (6:00 AM-10:00 PM)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="slotNumber">Slot Number</label>
+          <select id="slotNumber" name="slotNumber" required>
+            <option value="">Select</option>
+            <!-- Options will be filled dynamically by JS -->
+          </select>
+        </div>
+        <button type="submit" class="cta-btn">Book Slot</button>
+        <button type="button" id="demoBtn" class="cta-btn">Create Demo Bookings</button>
+      </form>
+      <div id="receiptModal" class="receipt-modal" style="display:none;">
+        <div class="receipt-content">
+          <h3>Booking Successful!</h3>
+          <div id="receiptDetails"></div>
+          <button id="downloadReceipt" class="cta-btn">Download Receipt</button>
+          <button id="sendEmail" class="cta-btn">Send Email</button>
+        </div>
+      </div>
+    </section>
+    <!-- My Bookings Section (User) -->
+    <section id="myBookingsSection" class="view-section" style="display:none;">
+      <h2>My Bookings</h2>
+      <div id="myBookingsTableContainer"></div>
+    </section>
+    <!-- Admin Dashboard Section -->
+    <section id="adminDashboard" class="view-section" style="display:none;">
+      <h2>Admin Dashboard</h2>
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>Manage Bookings</h3>
+        <button id="resetSlotsBtn" class="btn btn-danger">Reset All Slots</button>
+      </div>
+      <div id="adminSlotsTableContainer"></div>
+      <!-- Admin Create Booking Form -->
+      <form id="adminCreateForm" class="booking-form" style="margin-top:2rem;">
+        <h3>Create New Booking (Admin Only)</h3>
+        <div class="form-group">
+          <label for="adminName">Name</label>
+          <input type="text" id="adminName" name="adminName" required>
+        </div>
+        <div class="form-group">
+          <label for="adminEmail">Email</label>
+          <input type="email" id="adminEmail" name="adminEmail" required>
+        </div>
+        <div class="form-group">
+          <label for="adminVehicleNumber">Vehicle Number</label>
+          <input type="text" id="adminVehicleNumber" name="adminVehicleNumber" required>
+        </div>
+        <div class="form-group">
+          <label for="adminVehicleType">Vehicle Type</label>
+          <select id="adminVehicleType" name="adminVehicleType" required>
+            <option value="">Select</option>
+            <option value="Car">Car</option>
+            <option value="Bike">Bike</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="adminTimeSlot">Time Slot</label>
+          <select id="adminTimeSlot" name="adminTimeSlot" required>
+            <option value="">Select</option>
+            <option value="6:00 AM-8:00 AM">6:00 AM-8:00 AM</option>
+            <option value="8:00 AM-10:00 AM">8:00 AM-10:00 AM</option>
+            <option value="10:00 AM-12:00 PM">10:00 AM-12:00 PM</option>
+            <option value="12:00 PM-2:00 PM">12:00 PM-2:00 PM</option>
+            <option value="2:00 PM-4:00 PM">2:00 PM-4:00 PM</option>
+            <option value="4:00 PM-6:00 PM">4:00 PM-6:00 PM</option>
+            <option value="6:00 PM-8:00 PM">6:00 PM-8:00 PM</option>
+            <option value="8:00 PM-10:00 PM">8:00 PM-10:00 PM</option>
+            <option value="Whole Day (6:00 AM-10:00 PM)">Whole Day (6:00 AM-10:00 PM)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="adminSlotNumber">Slot Number</label>
+          <select id="adminSlotNumber" name="adminSlotNumber" required>
+            <option value="">Select</option>
+            <!-- Options will be filled dynamically by JS -->
+          </select>
+        </div>
+        <button type="submit" class="cta-btn">Create Booking</button>
+      </form>
+      <!-- User Management Section -->
+      <div id="userManagement" style="margin-top:2rem;">
+        <h3>User Management</h3>
+        <div id="usersTableContainer"></div>
+      </div>
+    </section>
+    <!-- View Slots/Admin Section -->
+    <section id="view" class="view-section">
+      <h2>View All Slots</h2>
+      <p>Check slot availability and remaining time for booked slots</p>
+      <div id="searchGroup" class="search-group" style="display:none;">
+        <input type="text" id="searchVehicle" placeholder="Search by Vehicle Number">
+        <button id="searchBtn" class="cta-btn">Search</button>
+      </div>
+      <div id="slotsTableContainer">
+        <!-- Slots table will be rendered here by JS -->
+      </div>
+      <div class="map-placeholder">
+        <h3>Parking Layout</h3>
+        <img src="assets/parking-map.png" alt="Parking Map" style="max-width:100%;height:auto;">
+      </div>
+    </section>
+  </main>
+  <footer id="contact">
+    <p>Contact Us: kanadegaurav81g@email.com | +1 878 8030 512</p>
+    <p>&copy; 2025 Smart Parking. All rights reserved.</p>
+  </footer>
+  <script src="script.js"></script>
 </body>
 </html>

@@ -1,964 +1,1354 @@
-class ParkingSystem {
-    constructor() {
-        this.slots = 20;
-        this.bookings = JSON.parse(localStorage.getItem('bookings')) || [];
-        this.pendingPayments = new Map(); // Store pending payment sessions
-        this.map = null;
-        this.markers = [];
-        this.selectedLocation = null;
-        this.parkingLocations = [
-            {
-                name: "Nagpur Railway Station Parking",
-                lat: 21.1458,
-                lng: 79.0882,
-                address: "Nagpur Railway Station, Central Avenue, Nagpur, Maharashtra",
-                slots: 80,
-                rate: 1.2
-            },
-            {
-                name: "Dr. Babasaheb Ambedkar International Airport Parking",
-                lat: 21.0922,
-                lng: 79.0473,
-                address: "Nagpur Airport, Mihan, Nagpur, Maharashtra",
-                slots: 120,
-                rate: 1.5
-            },
-            {
-                name: "Central Mall Parking",
-                lat: 21.1498,
-                lng: 79.0805,
-                address: "Central Mall, Sitabuldi, Nagpur, Maharashtra",
-                slots: 60,
-                rate: 1.3
-            },
-            {
-                name: "Government Medical College Parking",
-                lat: 21.1458,
-                lng: 79.0882,
-                address: "GMC Hospital, Medical College, Nagpur, Maharashtra",
-                slots: 40,
-                rate: 1.1
-            },
-            {
-                name: "Dharampeth Parking Zone",
-                lat: 21.1539,
-                lng: 79.1054,
-                address: "Dharampeth, Nagpur, Maharashtra",
-                slots: 35,
-                rate: 1.0
-            },
-            {
-                name: "Sitabuldi Market Parking",
-                lat: 21.1498,
-                lng: 79.0805,
-                address: "Sitabuldi Market, Nagpur, Maharashtra",
-                slots: 45,
-                rate: 1.2
-            },
-            {
-                name: "Orange City Hospital Parking",
-                lat: 21.1458,
-                lng: 79.0882,
-                address: "Orange City Hospital, Nagpur, Maharashtra",
-                slots: 30,
-                rate: 1.4
-            },
-            {
-                name: "VCA Stadium Parking",
-                lat: 21.1539,
-                lng: 79.1054,
-                address: "Vidarbha Cricket Association Stadium, Nagpur, Maharashtra",
-                slots: 100,
-                rate: 1.6
-            },
-            {
-                name: "Empress Mall Parking",
-                lat: 21.1498,
-                lng: 79.0805,
-                address: "Empress Mall, Sitabuldi, Nagpur, Maharashtra",
-                slots: 70,
-                rate: 1.3
-            },
-            {
-                name: "Dragon Palace Temple Parking",
-                lat: 21.1539,
-                lng: 79.1054,
-                address: "Dragon Palace Temple, Kamptee Road, Nagpur, Maharashtra",
-                slots: 50,
-                rate: 1.1
-            },
-            {
-                name: "Seminary Hills Parking",
-                lat: 21.1458,
-                lng: 79.0882,
-                address: "Seminary Hills, Nagpur, Maharashtra",
-                slots: 25,
-                rate: 1.0
-            },
-            {
-                name: "Zero Mile Stone Parking",
-                lat: 21.1498,
-                lng: 79.0805,
-                address: "Zero Mile Stone, Civil Lines, Nagpur, Maharashtra",
-                slots: 30,
-                rate: 1.2
-            },
-            {
-                name: "Maharajbagh Zoo Parking",
-                lat: 21.1539,
-                lng: 79.1054,
-                address: "Maharajbagh Zoo, Nagpur, Maharashtra",
-                slots: 40,
-                rate: 1.1
-            },
-            {
-                name: "Kasturchand Park Parking",
-                lat: 21.1458,
-                lng: 79.0882,
-                address: "Kasturchand Park, Sitabuldi, Nagpur, Maharashtra",
-                slots: 35,
-                rate: 1.2
-            },
-            {
-                name: "RBI Square Parking",
-                lat: 21.1498,
-                lng: 79.0805,
-                address: "RBI Square, Civil Lines, Nagpur, Maharashtra",
-                slots: 45,
-                rate: 1.3
-            }
-        ];
-        
-        this.initializeSlots();
-        this.updateAmount = this.updateAmount.bind(this);
-        this.setupEventListeners();
-        this.renderBookings();
-        this.setupModal();
-        this.initializeLocationSelector();
-        
-        // Initialize EmailJS with your public key
-        try {
-            emailjs.init("JdRepF3qg5_MGi7Z1");
-            console.log('EmailJS initialized successfully');
-        } catch (error) {
-            console.error('EmailJS initialization failed:', error);
-        }
-    }
-
-    initializeLocationSelector() {
-        const locationDropdown = document.getElementById('locationDropdown');
-        
-        // Populate dropdown with parking locations
-        this.parkingLocations.forEach((location, index) => {
-            const option = document.createElement('option');
-            option.value = index;
-            option.textContent = `${location.name} - ${location.address}`;
-            locationDropdown.appendChild(option);
-        });
-
-        // Add event listener for location selection
-        locationDropdown.addEventListener('change', (e) => {
-            if (e.target.value !== '') {
-                this.selectParkingLocation(parseInt(e.target.value));
-            } else {
-                this.clearLocationSelection();
-            }
-        });
-    }
-
-    addParkingMarkers() {
-        this.parkingLocations.forEach((location, index) => {
-            const marker = new google.maps.Marker({
-                position: { lat: location.lat, lng: location.lng },
-                map: this.map,
-                title: location.name,
-                icon: {
-                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                        <svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
-                            <circle cx="15" cy="15" r="12" fill="#007bff" stroke="#fff" stroke-width="2"/>
-                            <text x="15" y="20" text-anchor="middle" fill="white" font-size="12" font-weight="bold">P</text>
-                        </svg>
-                    `),
-                    scaledSize: new google.maps.Size(30, 30)
-                }
-            });
-
-            const infoWindow = new google.maps.InfoWindow({
-                content: `
-                    <div style="padding: 10px;">
-                        <h4 style="margin: 0 0 5px 0; color: #2c3e50;">${location.name}</h4>
-                        <p style="margin: 0 0 5px 0; color: #666; font-size: 12px;">${location.address}</p>
-                        <p style="margin: 0 0 5px 0; color: #28a745; font-weight: bold;">Available Slots: ${location.slots}</p>
-                        <p style="margin: 0; color: #007bff; font-weight: bold;">Rate Multiplier: ${location.rate}x</p>
-                        <button onclick="parkingSystem.selectParkingLocation(${index})" style="background: #28a745; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-top: 5px;">Select This Location</button>
-                    </div>
-                `
-            });
-
-            marker.addListener('click', () => {
-                infoWindow.open(this.map, marker);
-            });
-
-            this.markers.push({ marker, infoWindow, location });
-        });
-    }
-
-    setupLocationSearch() {
-        const searchInput = document.getElementById('locationSearch');
-        const searchBtn = document.getElementById('searchBtn');
-        const currentLocationBtn = document.getElementById('currentLocationBtn');
-
-        // Search functionality
-        searchBtn.addEventListener('click', () => {
-            this.searchLocation(searchInput.value);
-        });
-
-        searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.searchLocation(searchInput.value);
-            }
-        });
-
-        // Current location functionality
-        currentLocationBtn.addEventListener('click', () => {
-            this.getCurrentLocation();
-        });
-    }
-
-    searchLocation(query) {
-        if (!query.trim()) return;
-
-        const geocoder = new google.maps.Geocoder();
-        geocoder.geocode({ address: query }, (results, status) => {
-            if (status === 'OK') {
-                const location = results[0].geometry.location;
-                this.map.setCenter(location);
-                this.map.setZoom(15);
-                this.handleMapClick(location);
-            } else {
-                alert('Location not found. Please try a different search term.');
-            }
-        });
-    }
-
-    getCurrentLocation() {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    const location = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    };
-                    this.map.setCenter(location);
-                    this.map.setZoom(15);
-                    this.handleMapClick(location);
-                },
-                (error) => {
-                    alert('Unable to get your current location. Please search manually.');
-                }
-            );
-        } else {
-            alert('Geolocation is not supported by this browser.');
-        }
-    }
-
-    handleMapClick(latLng) {
-        // Clear previous selection
-        this.clearSelection();
-
-        // Add selection marker
-        const selectionMarker = new google.maps.Marker({
-            position: latLng,
-            map: this.map,
-            icon: {
-                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                    <svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="15" cy="15" r="12" fill="#28a745" stroke="#fff" stroke-width="2"/>
-                        <text x="15" y="20" text-anchor="middle" fill="white" font-size="12" font-weight="bold">✓</text>
-                    </svg>
-                `),
-                scaledSize: new google.maps.Size(30, 30)
-            }
-        });
-
-        // Get address for the selected location
-        const geocoder = new google.maps.Geocoder();
-        geocoder.geocode({ location: latLng }, (results, status) => {
-            if (status === 'OK') {
-                const address = results[0].formatted_address;
-                this.selectLocation(latLng.lat(), latLng.lng(), address);
-            } else {
-                this.selectLocation(latLng.lat(), latLng.lng(), 'Custom Location');
-            }
-        });
-
-        this.selectionMarker = selectionMarker;
-    }
-
-    selectParkingLocation(index) {
-        const location = this.parkingLocations[index];
-        this.selectLocation(location.lat, location.lng, location.address, location);
-        
-        // Update location details display
-        this.showLocationDetails(location);
-    }
-
-    showLocationDetails(location) {
-        const locationDetails = document.getElementById('locationDetails');
-        const locationName = document.getElementById('selectedLocationName');
-        const locationAddress = document.getElementById('selectedLocationAddress');
-        const locationSlots = document.getElementById('selectedLocationSlots');
-        const locationRate = document.getElementById('selectedLocationRate');
-
-        locationName.textContent = location.name;
-        locationAddress.textContent = location.address;
-        locationSlots.textContent = location.slots;
-        locationRate.textContent = location.rate;
-
-        locationDetails.style.display = 'block';
-    }
-
-    clearLocationSelection() {
-        this.selectedLocation = null;
-        document.getElementById('selectedLocationText').textContent = 'No location selected';
-        document.getElementById('locationDetails').style.display = 'none';
-        document.getElementById('selectedLatitude').value = '';
-        document.getElementById('selectedLongitude').value = '';
-        document.getElementById('selectedAddress').value = '';
-    }
-
-
-
-    selectLocation(lat, lng, address, parkingLocation = null) {
-        this.selectedLocation = {
-            lat: lat,
-            lng: lng,
-            address: address,
-            parkingLocation: parkingLocation
-        };
-
-        // Update UI
-        document.getElementById('selectedLocationText').textContent = address;
-        document.getElementById('selectedLatitude').value = lat;
-        document.getElementById('selectedLongitude').value = lng;
-        document.getElementById('selectedAddress').value = address;
-
-        // Update amount if parking location has different rate
-        if (parkingLocation) {
-            this.updateAmount();
-        }
-    }
-
-    clearSelection() {
-        if (this.selectionMarker) {
-            this.selectionMarker.setMap(null);
-        }
-    }
-
-
-
-    initializeSlots() {
-        const slotContainer = document.getElementById('slotContainer');
-        slotContainer.innerHTML = '';
-
-        for (let i = 1; i <= this.slots; i++) {
-            const slot = document.createElement('div');
-            slot.className = 'parking-slot available';
-            slot.dataset.slot = i;
-            slot.textContent = `Slot ${i}`;
-            slot.addEventListener('click', () => this.selectSlot(slot));
-            slotContainer.appendChild(slot);
-        }
-
-        this.updateSlotStatus();
-    }
-
-    selectSlot(slot) {
-        if (slot.classList.contains('occupied')) return;
-
-        document.querySelectorAll('.parking-slot').forEach(s => {
-            s.classList.remove('selected');
-        });
-        slot.classList.add('selected');
-    }
-
-    updateSlotStatus() {
-        const currentDate = new Date().toISOString().split('T')[0];
-        const slots = document.querySelectorAll('.parking-slot');
-
-        slots.forEach(slot => {
-            slot.classList.remove('occupied');
-            slot.classList.add('available');
-        });
-
-        this.bookings.forEach(booking => {
-            if (booking.date === currentDate) {
-                const slot = document.querySelector(`[data-slot="${booking.slotNumber}"]`);
-                if (slot) {
-                    slot.classList.remove('available');
-                    slot.classList.add('occupied');
-                }
-            }
-        });
-    }
-
-    setupEventListeners() {
-        const form = document.getElementById('parkingForm');
-        form.addEventListener('submit', (e) => this.handleBooking(e));
-        
-        // Add event listeners for amount calculation
-        document.getElementById('vehicleType').addEventListener('change', this.updateAmount);
-        document.getElementById('duration').addEventListener('input', this.updateAmount);
-        
-        // Setup payment method listener
-        this.setupPaymentMethodListener();
-        
-        // Setup verify payment button
-        document.getElementById('verifyPaymentBtn').addEventListener('click', () => this.verifyPayment());
-    }
-
-    setupPaymentMethodListener() {
-        const paymentMethod = document.getElementById('paymentMethod');
-        const cardDetails = document.getElementById('cardPaymentDetails');
-        const qrDetails = document.getElementById('qrPaymentDetails');
-        const bookButton = document.getElementById('bookButton');
-
-        paymentMethod.addEventListener('change', (e) => {
-            if (e.target.value === 'card') {
-                cardDetails.style.display = 'block';
-                qrDetails.style.display = 'none';
-                bookButton.textContent = 'Pay and Book Now';
-            } else {
-                cardDetails.style.display = 'none';
-                qrDetails.style.display = 'block';
-                bookButton.textContent = 'Book Now';
-                this.generateQRCode();
-            }
-        });
-    }
-
-    setupModal() {
-        const modal = document.getElementById('paymentModal');
-        const closeBtn = document.querySelector('.close');
-        const closeModalBtn = document.getElementById('closeModalBtn');
-
-        closeBtn.addEventListener('click', () => this.closeModal());
-        closeModalBtn.addEventListener('click', () => this.closeModal());
-
-        window.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                this.closeModal();
-            }
-        });
-    }
-
-    generateQRCode() {
-        const amount = document.getElementById('amount').value;
-        const qrContainer = document.getElementById('qrCode');
-        
-        // Create unique payment session ID
-        const paymentSessionId = 'PAY_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        
-        // Create UPI payment data
-        const upiData = {
-            pa: '8788030512@ybl', // Payment address (UPI ID)
-            pn: 'Parking System', // Payee name
-            tn: 'Parking Booking', // Transaction note
-            am: amount.replace('₹', ''), // Amount
-            cu: 'INR', // Currency
-            sessionId: paymentSessionId
-        };
-
-        // Store payment session
-        this.pendingPayments.set(paymentSessionId, {
-            amount: amount.replace('₹', ''),
-            timestamp: new Date().toISOString(),
-            status: 'pending'
-        });
-
-        // Create UPI URL format for better compatibility
-        const upiUrl = `upi://pay?pa=${upiData.pa}&pn=${encodeURIComponent(upiData.pn)}&tn=${encodeURIComponent(upiData.tn)}&am=${upiData.am}&cu=${upiData.cu}&sessionId=${upiData.sessionId}`;
-        
-        // Clear container first
-        qrContainer.innerHTML = '';
-        
-        // Try multiple QR generation methods
-        this.generateQRWithMultipleMethods(upiUrl, qrContainer);
-
-        // Enable verify button after 5 seconds
-        setTimeout(() => {
-            document.getElementById('verifyPaymentBtn').disabled = false;
-        }, 5000);
-    }
-
-    generateQRWithMultipleMethods(upiUrl, qrContainer) {
-        // Method 1: Try QRCode library if available
-        if (typeof QRCode !== 'undefined') {
-            try {
-                QRCode.toCanvas(qrContainer, upiUrl, {
-                    width: 200,
-                    height: 200,
-                    margin: 2,
-                    color: {
-                        dark: '#000000',
-                        light: '#FFFFFF'
-                    }
-                }, (error) => {
-                    if (error) {
-                        console.error('QRCode library failed:', error);
-                        this.generateQRWithAPI(upiUrl, qrContainer);
-                    }
-                });
-            } catch (error) {
-                console.error('QRCode library error:', error);
-                this.generateQRWithAPI(upiUrl, qrContainer);
-            }
-        } else {
-            // Method 2: Use external API as fallback
-            this.generateQRWithAPI(upiUrl, qrContainer);
-        }
-    }
-
-    // Alternative method using external QR API
-    generateQRWithAPI(upiUrl, qrContainer) {
-        try {
-            const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(upiUrl)}&size=200x200&format=png&margin=2`;
-            
-            const img = document.createElement('img');
-            img.src = apiUrl;
-            img.alt = 'Payment QR Code';
-            img.style.maxWidth = '100%';
-            img.style.height = 'auto';
-            img.style.border = '2px solid #ddd';
-            img.style.borderRadius = '8px';
-            
-            img.onload = () => {
-                qrContainer.innerHTML = '';
-                qrContainer.appendChild(img);
-            };
-            
-            img.onerror = () => {
-                console.error('External QR API failed');
-                this.generateSimpleQR(upiUrl, qrContainer);
-            };
-            
-        } catch (error) {
-            console.error('QR API error:', error);
-            this.generateSimpleQR(upiUrl, qrContainer);
-        }
-    }
-
-    // Simple fallback QR generation
-    generateSimpleQR(upiUrl, qrContainer) {
-        qrContainer.innerHTML = `
-            <div style="text-align: center; padding: 20px; border: 2px solid #ddd; border-radius: 8px; background: #f8f9fa;">
-                <h4 style="color: #2c3e50; margin-bottom: 10px;">Payment QR Code</h4>
-                <p style="color: #666; margin-bottom: 15px;">UPI ID: 8788030512@ybl</p>
-                <p style="color: #666; margin-bottom: 15px;">Amount: ₹${document.getElementById('amount').value.replace('₹', '')}</p>
-                <p style="color: #666; font-size: 12px;">Scan with any UPI app to pay</p>
-                <div style="background: #e9ecef; padding: 10px; border-radius: 4px; margin-top: 10px;">
-                    <p style="font-family: monospace; font-size: 11px; word-break: break-all; margin: 0;">
-                        ${upiUrl}
-                    </p>
-                </div>
-            </div>
-        `;
-    }
-
-    updateAmount() {
-        const vehicleType = document.getElementById('vehicleType').value;
-        const duration = document.getElementById('duration').value;
-        let amount = this.calculateAmount(duration, vehicleType);
-        
-        // Apply location-based rate multiplier
-        if (this.selectedLocation && this.selectedLocation.parkingLocation) {
-            amount = Math.round(amount * this.selectedLocation.parkingLocation.rate);
-        }
-        
-        document.getElementById('amount').value = `₹${amount}`;
-    }
-
-    calculateAmount(duration, vehicleType) {
-        const baseRates = {
-            car: 50,
-            bike: 30,
-            truck: 80,
-            scanner: 40
-        };
-        return baseRates[vehicleType] * parseInt(duration);
-    }
-
-    handleBooking(e) {
-        e.preventDefault();
-
-        const selectedSlot = document.querySelector('.parking-slot.selected');
-        if (!selectedSlot) {
-            alert('Please select a parking slot');
-            return;
-        }
-
-        if (!this.selectedLocation) {
-            alert('Please select a parking location');
-            return;
-        }
-
-        const paymentMethod = document.getElementById('paymentMethod').value;
-
-        if (paymentMethod === 'card') {
-            this.processCardPayment();
-        } else {
-            // For QR payment, generate QR and show payment modal
-            this.generateQRCode();
-            this.showPaymentModal();
-        }
-    }
-
-    processCardPayment() {
-        // Simulate card payment processing
-        const cardNumber = document.getElementById('cardNumber').value;
-        const cardExpiry = document.getElementById('cardExpiry').value;
-        const cardCvv = document.getElementById('cardCvv').value;
-
-        if (!cardNumber || !cardExpiry || !cardCvv) {
-            alert('Please fill in all card details');
-            return;
-        }
-
-        // Validate card details (basic validation)
-        if (cardNumber.length !== 16 || cardCvv.length !== 3) {
-            alert('Please enter valid card details');
-            return;
-        }
-
-        // Simulate payment processing
-        this.showPaymentModal();
-        setTimeout(() => {
-            this.simulatePaymentVerification(true);
-        }, 2000);
-    }
-
-    showPaymentModal() {
-        const modal = document.getElementById('paymentModal');
-        const verificationStatus = document.getElementById('verificationStatus');
-        const verificationResult = document.getElementById('verificationResult');
-        const confirmBtn = document.getElementById('confirmBookingBtn');
-
-        // Reset modal state
-        verificationStatus.style.display = 'flex';
-        verificationResult.style.display = 'none';
-        confirmBtn.style.display = 'none';
-
-        modal.style.display = 'block';
-    }
-
-    closeModal() {
-        const modal = document.getElementById('paymentModal');
-        modal.style.display = 'none';
-    }
-
-    verifyPayment() {
-        const paymentStatus = document.getElementById('paymentStatus');
-        const verifyBtn = document.getElementById('verifyPaymentBtn');
-
-        // Update UI to show verification in progress
-        paymentStatus.className = 'payment-status pending';
-        paymentStatus.innerHTML = '<span class="status-icon">⏳</span><span class="status-text">Verifying Payment...</span>';
-        verifyBtn.disabled = true;
-
-        // Get payment details
-        const amount = document.getElementById('amount').value.replace('₹', '');
-        const upiId = '8788030512@ybl';
-        
-        // Real payment verification would involve:
-        // 1. Calling UPI API to check transaction status
-        // 2. Verifying payment amount
-        // 3. Checking transaction timestamp
-        // 4. Validating UPI transaction ID
-        
-        // For demo purposes, we'll simulate with user input
-        const userConfirmed = confirm(
-            `🔍 Payment Verification\n\n` +
-            `💰 Amount: ₹${amount}\n` +
-            `📱 UPI ID: ${upiId}\n` +
-            `⏰ Time: ${new Date().toLocaleTimeString()}\n\n` +
-            `❓ Did you complete the payment?\n\n` +
-            `✅ Click OK if payment is successful\n` +
-            `❌ Click Cancel if payment failed`
-        );
-
-        if (userConfirmed) {
-            // Payment verified by user
-            setTimeout(() => {
-                this.simulatePaymentVerification(true);
-            }, 500);
-        } else {
-            // Payment failed
-            setTimeout(() => {
-                this.simulatePaymentVerification(false);
-            }, 500);
-        }
-    }
-
-    simulatePaymentVerification(success) {
-        const paymentStatus = document.getElementById('paymentStatus');
-        const verifyBtn = document.getElementById('verifyPaymentBtn');
-
-        if (success) {
-            paymentStatus.className = 'payment-status success';
-            paymentStatus.innerHTML = '<span class="status-icon">✅</span><span class="status-text">Payment Successful!</span>';
-            verifyBtn.textContent = 'Payment Verified';
-            verifyBtn.style.backgroundColor = '#28a745';
-            
-            // Add success message to QR section
-            const qrContainer = document.querySelector('.qr-payment-container');
-            const successMessage = document.createElement('div');
-            successMessage.className = 'payment-success-message';
-            successMessage.innerHTML = `
-                <div style="background-color: #d4edda; color: #155724; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #c3e6cb;">
-                    <h4 style="margin: 0 0 10px 0; color: #155724;">🎉 Payment Successful!</h4>
-                    <p style="margin: 0; font-size: 14px;">Your payment has been verified. Please check the modal for booking confirmation.</p>
-                </div>
-            `;
-            qrContainer.appendChild(successMessage);
-            
-            // Show success in modal with confirm button
-            this.showVerificationResult(true, 'Payment Successful!', 'Your payment has been verified successfully. Click "Confirm Booking" to complete your booking.');
-        } else {
-            paymentStatus.className = 'payment-status failed';
-            paymentStatus.innerHTML = '<span class="status-icon">❌</span><span class="status-text">Payment Failed</span>';
-            verifyBtn.textContent = 'Try Again';
-            verifyBtn.disabled = false;
-            verifyBtn.style.backgroundColor = '#dc3545';
-            
-            // Show failure in modal
-            this.showVerificationResult(false, 'Payment Failed', 'Payment verification failed. Please try again.');
-        }
-    }
-
-    showVerificationResult(success, title, message) {
-        const verificationStatus = document.getElementById('verificationStatus');
-        const verificationResult = document.getElementById('verificationResult');
-        const resultTitle = document.getElementById('resultTitle');
-        const resultMessage = document.getElementById('resultMessage');
-        const resultIcon = document.querySelector('.result-icon');
-        const confirmBtn = document.getElementById('confirmBookingBtn');
-
-        verificationStatus.style.display = 'none';
-        verificationResult.style.display = 'flex';
-
-        resultTitle.textContent = title;
-        resultMessage.textContent = message;
-
-        if (success) {
-            resultIcon.className = 'result-icon success';
-            resultIcon.innerHTML = '✅';
-            
-            // Show confirm button prominently with enhanced styling
-            confirmBtn.style.display = 'inline-block';
-            confirmBtn.textContent = '📋 Confirm Booking';
-            confirmBtn.style.backgroundColor = '#28a745';
-            confirmBtn.style.color = 'white';
-            confirmBtn.style.fontWeight = 'bold';
-            confirmBtn.style.padding = '15px 30px';
-            confirmBtn.style.fontSize = '18px';
-            confirmBtn.style.borderRadius = '8px';
-            confirmBtn.style.border = 'none';
-            confirmBtn.style.cursor = 'pointer';
-            confirmBtn.style.marginRight = '10px';
-            
-            // Add success animation and highlight
-            confirmBtn.style.animation = 'pulse 2s infinite';
-            confirmBtn.style.boxShadow = '0 0 25px rgba(40, 167, 69, 0.6)';
-            confirmBtn.style.transition = 'all 0.3s ease';
-            
-            // Setup confirm booking button with proper event listener
-            confirmBtn.onclick = () => {
-                this.confirmBooking();
-            };
-            
-            // Add hover effect
-            confirmBtn.onmouseenter = () => {
-                confirmBtn.style.backgroundColor = '#218838';
-                confirmBtn.style.transform = 'scale(1.05)';
-            };
-            
-            confirmBtn.onmouseleave = () => {
-                confirmBtn.style.backgroundColor = '#28a745';
-                confirmBtn.style.transform = 'scale(1)';
-            };
-        } else {
-            resultIcon.className = 'result-icon failed';
-            resultIcon.innerHTML = '❌';
-            confirmBtn.style.display = 'none';
-        }
-    }
-
-    confirmBooking() {
-        const selectedSlot = document.querySelector('.parking-slot.selected');
-        const userEmail = document.getElementById('userEmail').value;
-
-        // Show loading state
-        const confirmBtn = document.getElementById('confirmBookingBtn');
-        const originalText = confirmBtn.textContent;
-        confirmBtn.textContent = '🔄 Confirming...';
-        confirmBtn.disabled = true;
-
-        // Calculate amount with location-based rate multiplier
-        let amount = this.calculateAmount(document.getElementById('duration').value, document.getElementById('vehicleType').value);
-        
-        // Apply location-based rate multiplier
-        if (this.selectedLocation && this.selectedLocation.parkingLocation) {
-            amount = Math.round(amount * this.selectedLocation.parkingLocation.rate);
-        }
-        
-        const booking = {
-            id: Date.now(),
-            vehicleNumber: document.getElementById('vehicleNumber').value,
-            vehicleType: document.getElementById('vehicleType').value,
-            date: document.getElementById('entryDate').value,
-            time: document.getElementById('entryTime').value,
-            duration: document.getElementById('duration').value,
-            slotNumber: selectedSlot.dataset.slot,
-            amount: amount,
-            paymentMethod: document.getElementById('paymentMethod').value || 'QR Payment',
-            paymentStatus: 'Paid',
-            paymentVerified: true,
-            bookingDate: new Date().toISOString(),
-            location: this.selectedLocation
-        };
-
-        // First save booking immediately
-        this.bookings.push(booking);
-        localStorage.setItem('bookings', JSON.stringify(this.bookings));
-        this.updateSlotStatus();
-        this.renderBookings();
-
-        // Show immediate success
-        this.resetForm();
-        this.closeModal();
-        this.showBookingSuccess(booking);
-
-        // Send email in background
-        const emailParams = {
-            to_email: userEmail,
-            booking_id: booking.id,
-            vehicle_number: booking.vehicleNumber,
-            vehicle_type: booking.vehicleType,
-            date: booking.date,
-            time: booking.time,
-            duration: booking.duration,
-            slot_number: booking.slotNumber,
-            total_amount: booking.amount,
-            payment_status: booking.paymentStatus,
-            payment_method: booking.paymentMethod,
-            location_address: booking.location.address
-        };
-
-        // Send email with shorter timeout
-        const emailTimeout = setTimeout(() => {
-            console.log('Email sent successfully (timeout fallback)');
-        }, 3000);
-
-        emailjs.send("gaurav_service", "template_pj9oa1v", emailParams)
-            .then(() => {
-                clearTimeout(emailTimeout);
-                console.log('Email sent successfully');
-                alert('📧 Booking confirmation email sent to ' + userEmail);
-            })
-            .catch((error) => {
-                clearTimeout(emailTimeout);
-                console.error('Email sending failed:', error);
-                alert('✅ Booking confirmed! Email sending failed, but booking is saved.');
-            })
-            .finally(() => {
-                confirmBtn.textContent = originalText;
-                confirmBtn.disabled = false;
-            });
-    }
-
-    showBookingSuccess(booking, emailFailed = false) {
-        const successModal = document.getElementById('bookingSuccessModal');
-        const bookingDetails = document.getElementById('bookingDetails');
-        
-        // Populate booking details
-        bookingDetails.innerHTML = `
-            <h5>📋 Booking Details</h5>
-            <p><strong>📋 Booking ID:</strong> #${booking.id}</p>
-            <p><strong>🚗 Vehicle:</strong> ${booking.vehicleNumber} (${booking.vehicleType})</p>
-            <p><strong>📅 Date:</strong> ${booking.date} at ${booking.time}</p>
-            <p><strong>⏱️ Duration:</strong> ${booking.duration} hours</p>
-            <p><strong>🅿️ Slot:</strong> ${booking.slotNumber}</p>
-            <p><strong>💰 Amount:</strong> ₹${booking.amount}</p>
-            <p><strong>📍 Location:</strong> ${booking.location.address}</p>
-            <p><strong>💳 Payment Method:</strong> ${booking.paymentMethod}</p>
-            <p><strong>✅ Payment Status:</strong> ${booking.paymentStatus}</p>
-        `;
-        
-        // Show success modal
-        successModal.style.display = 'block';
-        
-        // Show immediate alert for user feedback
-        alert(`🎉 Booking Confirmed!\n\n📋 Booking ID: #${booking.id}\n🚗 Vehicle: ${booking.vehicleNumber} (${booking.vehicleType})\n📅 Date: ${booking.date}\n⏰ Time: ${booking.time}\n⏱️ Duration: ${booking.duration} hours\n🅿️ Slot: ${booking.slotNumber}\n💰 Amount: ₹${booking.amount}\n📍 Location: ${booking.location.address}\n💳 Payment Method: ${booking.paymentMethod}\n✅ Payment Status: ${booking.paymentStatus}\n\n📧 Email receipt will be sent shortly.`);
-        
-        // Auto-hide modal after 15 seconds
-        setTimeout(() => {
-            successModal.style.display = 'none';
-        }, 15000);
-    }
-
-    resetForm() {
-        document.getElementById('parkingForm').reset();
-        document.querySelectorAll('.parking-slot').forEach(s => s.classList.remove('selected'));
-        document.getElementById('qrCode').innerHTML = '';
-        document.getElementById('paymentStatus').className = 'payment-status pending';
-        document.getElementById('paymentStatus').innerHTML = '<span class="status-icon">⏳</span><span class="status-text">Waiting for Payment</span>';
-        document.getElementById('verifyPaymentBtn').disabled = true;
-        document.getElementById('verifyPaymentBtn').textContent = 'Verify Payment';
-        document.getElementById('verifyPaymentBtn').style.backgroundColor = '#28a745';
-        
-        // Clear location selection
-        this.clearLocationSelection();
-    }
-
-    renderBookings() {
-        const bookingsList = document.getElementById('bookingsList');
-        bookingsList.innerHTML = '';
-
-        this.bookings.sort((a, b) => new Date(b.bookingDate || b.date) - new Date(a.bookingDate || a.date));
-
-        this.bookings.forEach(booking => {
-            const bookingItem = document.createElement('div');
-            bookingItem.className = 'booking-item';
-            
-            const paymentStatusClass = booking.paymentVerified ? 'success' : 'pending';
-            const paymentIcon = booking.paymentVerified ? '✅' : '⏳';
-            
-            const locationInfo = booking.location ? 
-                `<p>Location: ${booking.location.address}</p>` : 
-                '<p>Location: Not specified</p>';
-            
-            bookingItem.innerHTML = `
-                <h3>Booking #${booking.id}</h3>
-                <div class="booking-details">
-                    <p>Vehicle Number: ${booking.vehicleNumber}</p>
-                    <p>Vehicle Type: ${booking.vehicleType}</p>
-                    <p>Date: ${booking.date}</p>
-                    <p>Time: ${booking.time}</p>
-                    <p>Duration: ${booking.duration} hours</p>
-                    <p>Slot Number: ${booking.slotNumber}</p>
-                    <p>Amount Paid: ₹${booking.amount}</p>
-                    <p>Payment Method: ${booking.paymentMethod}</p>
-                    <p>Payment Status: <span class="payment-status ${paymentStatusClass}">${paymentIcon} ${booking.paymentStatus}</span></p>
-                    ${locationInfo}
-                    <p>Booking Date: ${new Date(booking.bookingDate || booking.date).toLocaleString()}</p>
-                </div>
-            `;
-            bookingsList.appendChild(bookingItem);
-        });
-    }
+// script.js for Smart Parking 
+// --- Slot Management with localStorage ---
+let slots = Array(10).fill(null); // Initialize slots array
+
+// Load slots from localStorage on page load
+function loadSlots() {
+  const savedSlots = localStorage.getItem('parkingSlots');
+  if (savedSlots) {
+    slots = JSON.parse(savedSlots);
+    console.log('Slots loaded from localStorage:', slots);
+  } else {
+    slots = Array(10).fill(null);
+    console.log('No saved slots found, using default empty slots');
+  }
 }
 
-// Initialize the parking system when the page loads
-document.addEventListener('DOMContentLoaded', () => {
-    window.parkingSystem = new ParkingSystem();
+// Save slots to localStorage
+function saveSlots() {
+  localStorage.setItem('parkingSlots', JSON.stringify(slots));
+  console.log('Slots saved to localStorage:', slots);
+}
+
+// --- Booking Time Management ---
+function getCurrentTime() {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes(); // Convert to minutes
+}
+
+function parseTimeSlot(timeSlot) {
+  if (timeSlot.includes('Whole Day')) {
+    return 6 * 60; // 6:00 AM in minutes
+  }
+  const [startTime] = timeSlot.split('-');
+  const timeStr = startTime.trim();
+  const isPM = timeStr.includes('PM');
+  let [hours, minutes] = timeStr.replace(' AM', '').replace(' PM', '').split(':').map(Number);
+  
+  if (isPM && hours !== 12) {
+    hours += 12;
+  } else if (!isPM && hours === 12) {
+    hours = 0;
+  }
+  
+  return hours * 60 + minutes; // Convert to minutes
+}
+
+function getBookingEndTime(timeSlot) {
+  if (timeSlot.includes('Whole Day')) {
+    return 22 * 60; // 10:00 PM in minutes (16 hours duration)
+  }
+  const startMinutes = parseTimeSlot(timeSlot);
+  return startMinutes + 120; // 2 hours duration for regular slots
+}
+
+function isBookingExpired(booking) {
+  const currentTime = getCurrentTime();
+  const endTime = getBookingEndTime(booking.timeSlot);
+  return currentTime >= endTime;
+}
+
+function releaseExpiredSlots() {
+  let released = false;
+  slots.forEach((slot, index) => {
+    if (slot && isBookingExpired(slot)) {
+      slots[index] = null;
+      released = true;
+      console.log(`Slot ${index + 1} released automatically (expired booking)`);
+    }
+  });
+  // Also release expired user bookings
+  releaseExpiredUserBookings();
+  if (released) {
+    updateSlotDropdown();
+    renderSlotsTable();
+    renderAdminSlotsTable();
+    renderUserBookings();
+    saveSlots(); // Save slots after release
+  }
+}
+
+// Check for expired slots every minute
+setInterval(releaseExpiredSlots, 60000);
+
+// --- DOM Elements ---
+const slotNumberSelect = document.getElementById('slotNumber');
+const bookingForm = document.getElementById('bookingForm');
+const receiptModal = document.getElementById('receiptModal');
+const receiptDetails = document.getElementById('receiptDetails');
+const downloadReceiptBtn = document.getElementById('downloadReceipt');
+const sendEmailBtn = document.getElementById('sendEmail');
+const slotsTableContainer = document.getElementById('slotsTableContainer');
+const searchVehicleInput = document.getElementById('searchVehicle');
+const searchBtn = document.getElementById('searchBtn');
+const darkModeToggle = document.getElementById('darkModeToggle');
+const loginBtn = document.getElementById('loginBtn');
+const logoutBtn = document.getElementById('logoutBtn');
+const loginModal = document.getElementById('loginModal');
+const loginForm = document.getElementById('loginForm');
+const myBookingsSection = document.getElementById('myBookingsSection');
+const myBookingsTableContainer = document.getElementById('myBookingsTableContainer');
+const adminDashboard = document.getElementById('adminDashboard');
+const adminSlotsTableContainer = document.getElementById('adminSlotsTableContainer');
+const resetSlotsBtn = document.getElementById('resetSlotsBtn');
+
+// --- Auth State ---
+function getSession() {
+  return JSON.parse(localStorage.getItem('parkingSession'));
+}
+function setSession(session) {
+  localStorage.setItem('parkingSession', JSON.stringify(session));
+}
+function clearSession() {
+  localStorage.removeItem('parkingSession');
+}
+function updateAuthUI() {
+  const session = getSession();
+  const searchGroup = document.getElementById('searchGroup');
+  const downloadReceiptBtn = document.getElementById('downloadReceiptBtn');
+  
+  if (session) {
+    loginBtn.style.display = 'none';
+    logoutBtn.style.display = '';
+    downloadReceiptBtn.style.display = '';
+    
+    if (session.role === 'admin') {
+      adminDashboard.style.display = '';
+      myBookingsSection.style.display = 'none';
+      if (searchGroup) searchGroup.style.display = 'flex';
+      downloadReceiptBtn.innerHTML = '📷 Download Any Receipt';
+    } else {
+      adminDashboard.style.display = 'none';
+      myBookingsSection.style.display = '';
+      if (searchGroup) searchGroup.style.display = 'none';
+      downloadReceiptBtn.innerHTML = '📷 Download My Receipt';
+      renderUserBookings();
+    }
+  } else {
+    loginBtn.style.display = '';
+    logoutBtn.style.display = 'none';
+    downloadReceiptBtn.style.display = 'none';
+    adminDashboard.style.display = 'none';
+    myBookingsSection.style.display = 'none';
+    if (searchGroup) searchGroup.style.display = 'none';
+  }
+}
+
+// --- Admin List ---
+const ADMIN_ACCOUNTS = [
+  { id: 'gaurav', email: 'kanadegaurav81@gmail.com', password: 'gaura007865' },
+  { id: 'gaurav1', email: 'kanadegaurav81@gmail.com', password: 'gaura0078655' }
+];
+
+// --- User Management ---
+function getUsers() {
+  const users = localStorage.getItem('parkingUsers');
+  return users ? JSON.parse(users) : [];
+}
+
+function saveUsers(users) {
+  localStorage.setItem('parkingUsers', JSON.stringify(users));
+}
+
+function addUser(user) {
+  const users = getUsers();
+  users.push(user);
+  saveUsers(users);
+}
+
+function removeUser(userId) {
+  const users = getUsers();
+  const filteredUsers = users.filter(u => u.id !== userId);
+  saveUsers(filteredUsers);
+}
+
+// --- User Registration ---
+function registerUser(id, email, password) {
+  const users = getUsers();
+  const existingUser = users.find(u => u.id === id || u.email === email);
+  if (existingUser) {
+    return { success: false, message: 'User ID or Email already exists!' };
+  }
+  const newUser = { id, email, password, role: 'user' };
+  addUser(newUser);
+  return { success: true, message: 'User registered successfully!' };
+}
+
+// --- Login Modal Logic ---
+loginBtn.addEventListener('click', () => {
+  loginModal.style.display = 'flex';
 });
+logoutBtn.addEventListener('click', () => {
+  clearSession();
+  updateAuthUI();
+});
+loginModal.addEventListener('click', function(e) {
+  if (e.target === loginModal) loginModal.style.display = 'none';
+});
+
+// Wait for DOM to be ready
+// Initialize everything on page load
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('Page loaded, initializing parking system...');
+  
+  // 1. Load slots from localStorage
+  loadSlots();
+  
+  // 2. Release expired slots
+  releaseExpiredSlots();
+  
+  // 3. Render initial displays
+  renderSlotsTable();
+  renderUserBookings();
+  updateSlotDropdown();
+  
+  // 4. Update auth UI
+  updateAuthUI();
+  
+  // 5. Add event listeners
+  addEventListeners();
+  
+  console.log('Parking system initialized successfully');
+});
+
+// Add all event listeners
+function addEventListeners() {
+  // Add a message area below the login form
+  let loginMessage = document.getElementById('loginMessage');
+  if (!loginMessage) {
+    loginMessage = document.createElement('div');
+    loginMessage.id = 'loginMessage';
+    loginMessage.style.marginTop = '1rem';
+    loginForm.appendChild(loginMessage);
+  }
+
+  // Add show/hide password functionality
+  const togglePassword = document.getElementById('togglePassword');
+  const passwordInput = document.getElementById('loginPassword');
+  if (togglePassword && passwordInput) {
+    togglePassword.addEventListener('click', function() {
+      const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+      passwordInput.setAttribute('type', type);
+      togglePassword.textContent = type === 'password' ? '👁️' : '🙈';
+    });
+  }
+
+  // Login form
+  loginForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    loginMessage.textContent = '';
+    loginMessage.style.color = '';
+    const id = loginForm.loginId.value.trim();
+    const email = loginForm.loginEmail.value.trim();
+    const password = loginForm.loginPassword.value.trim();
+    const role = loginForm.loginRole.value;
+    
+    console.log('Login attempt:', { id, email, role });
+    
+    if (!id || !email || !password) {
+      loginMessage.textContent = 'All fields are required.';
+      loginMessage.style.color = 'red';
+      return;
+    }
+    
+    if (role === 'admin') {
+      const found = ADMIN_ACCOUNTS.find(a =>
+        a.id.trim().toLowerCase() === id.toLowerCase() &&
+        a.email.trim().toLowerCase() === email.toLowerCase() &&
+        a.password.trim() === password
+      );
+      if (!found) {
+        loginMessage.textContent = 'Invalid admin credentials.';
+        loginMessage.style.color = 'red';
+        return;
+      }
+    } else if (role === 'user') {
+      const users = getUsers();
+      const found = users.find(u =>
+        u.id.toLowerCase() === id.toLowerCase() &&
+        u.email.toLowerCase() === email.toLowerCase() &&
+        u.password === password
+      );
+      if (!found) {
+        // Auto-register new user
+        const result = registerUser(id, email, password);
+        if (result.success) {
+          loginMessage.textContent = 'New user registered and logged in!';
+          loginMessage.style.color = 'green';
+        } else {
+          loginMessage.textContent = result.message;
+          loginMessage.style.color = 'red';
+          return;
+        }
+      }
+    }
+    
+    setSession({ id, email, role });
+    loginMessage.textContent = 'Login successful!';
+    loginMessage.style.color = 'green';
+    setTimeout(() => {
+      loginModal.style.display = 'none';
+      loginMessage.textContent = '';
+      updateAuthUI();
+    }, 1000);
+  });
+
+  // Booking form
+  bookingForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    console.log('Booking form submitted');
+    
+    const session = getSession();
+    if (!session) {
+      alert('Please login first!');
+      return;
+    }
+    
+    const slotNumber = parseInt(slotNumberSelect.value);
+    const name = bookingForm.name.value;
+    const vehicleNumber = bookingForm.vehicleNumber.value;
+    const timeSlot = bookingForm.timeSlot.value;
+    
+    console.log('Booking details:', { slotNumber, name, vehicleNumber, timeSlot });
+    
+    if (!slotNumber || !name || !vehicleNumber || !timeSlot) {
+      alert('Please fill all fields!');
+      return;
+    }
+    
+    const slotIndex = slotNumber - 1;
+    if (slots[slotIndex]) {
+      alert('Slot is already booked!');
+      return;
+    }
+    
+    const booking = {
+      name,
+      vehicleNumber,
+      slotNumber,
+      bookingID: generateBookingID(),
+      timeSlot,
+      bookingTime: new Date().toISOString(),
+      email: session.email // Add user's email to identify own bookings
+    };
+    
+    console.log('Creating booking:', booking);
+    
+    slots[slotIndex] = booking;
+    
+    // Add to user bookings if user
+    if (session.role === 'user') {
+      addUserBooking(booking);
+    }
+    
+    // Save to localStorage
+    saveSlots();
+    console.log('Booking saved to localStorage');
+    
+    // Update displays
+    renderSlotsTable();
+    renderAdminSlotsTable();
+    updateSlotDropdown();
+    showReceipt(booking);
+    bookingForm.reset();
+  });
+
+  // Demo button
+  const demoBtn = document.getElementById('demoBtn');
+  if (demoBtn) {
+    demoBtn.addEventListener('click', createSampleBookings);
+  }
+  
+  // Reset slots button
+  const resetSlotsBtn = document.getElementById('resetSlotsBtn');
+  if (resetSlotsBtn) {
+    resetSlotsBtn.addEventListener('click', resetSlots);
+  }
+  
+  // Receipt modal events
+  receiptModal.addEventListener('click', function(e) {
+    if (e.target === receiptModal) hideReceipt();
+  });
+  
+  // Search functionality
+  searchBtn.addEventListener('click', function() {
+    renderSlotsTable(searchVehicleInput.value.trim());
+  });
+  searchVehicleInput.addEventListener('keyup', function(e) {
+    if (e.key === 'Enter') renderSlotsTable(searchVehicleInput.value.trim());
+  });
+  
+  // Dark mode toggle
+  darkModeToggle.addEventListener('click', function() {
+    setDarkMode(!document.body.classList.contains('dark-mode'));
+  });
+  
+  // Receipt modal events
+  receiptModal.addEventListener('click', function(e) {
+    if (e.target === receiptModal) hideReceipt();
+  });
+  
+  // Keyboard events
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      loginModal.style.display = 'none';
+      hideReceipt();
+    }
+  });
+  
+  // Download and email buttons (modal)
+  const modalDownloadBtn = document.getElementById('downloadReceipt');
+  if (modalDownloadBtn) {
+    modalDownloadBtn.addEventListener('click', function() {
+      generateImageReceipt();
+    });
+  }
+
+  // Download receipt button (main navigation)
+  const downloadReceiptBtn = document.getElementById('downloadReceiptBtn');
+  if (downloadReceiptBtn) {
+    downloadReceiptBtn.addEventListener('click', function() {
+      const session = getSession();
+      if (!session) {
+        alert('Please login first!');
+        return;
+      }
+      
+      if (session.role === 'admin') {
+        showAdminReceiptDownload();
+      } else {
+        showUserReceiptDownload();
+      }
+    });
+  }
+
+  sendEmailBtn.addEventListener('click', function() {
+    // Placeholder for EmailJS integration
+    alert('Email sending coming soon!');
+  });
+}
+
+// Keyboard events moved to addEventListeners function
+
+// --- Utility Functions ---
+function updateSlotDropdown() {
+  slotNumberSelect.innerHTML = '<option value="">Select</option>';
+  slots.forEach((slot, i) => {
+    if (!slot) {
+      slotNumberSelect.innerHTML += `<option value="${i+1}">Slot ${i+1}</option>`;
+    }
+  });
+}
+
+function generateBookingID() {
+  return 'BK' + Math.floor(100000 + Math.random() * 900000);
+}
+
+function showReceipt(booking) {
+  const session = getSession();
+  const userEmail = booking.email || (session ? session.email : 'N/A');
+  
+  receiptDetails.innerHTML = `
+    <p><strong>Name:</strong> ${booking.name}</p>
+    <p><strong>Email:</strong> ${userEmail}</p>
+    <p><strong>Vehicle No:</strong> ${booking.vehicleNumber}</p>
+    <p><strong>Slot No:</strong> ${booking.slotNumber}</p>
+    <p><strong>Booking ID:</strong> ${booking.bookingID}</p>
+    <p><strong>Time:</strong> ${booking.timeSlot}</p>
+  `;
+  
+  // Update download button text
+  const downloadBtn = document.getElementById('downloadReceipt');
+  if (downloadBtn) {
+    downloadBtn.innerHTML = '📷 Download Image Receipt';
+    downloadBtn.style.background = '#28a745';
+    downloadBtn.style.color = 'white';
+  }
+  
+  receiptModal.style.display = 'flex';
+}
+
+function hideReceipt() {
+  receiptModal.style.display = 'none';
+}
+
+function renderSlotsTable(filterVehicle = '') {
+  const session = getSession();
+  let html = '<table class="slots-table';
+  if (!session || session.role !== 'admin') {
+    html += ' public-view';
+  }
+  html += '"><thead><tr><th>Slot No</th><th>Status</th>';
+  
+  if (session && session.role === 'admin') {
+    // Admin: show all details
+    html += '<th>Name</th><th>Vehicle No</th><th>Time</th><th>Booking ID</th><th>Remaining Time</th>';
+  } else if (session && session.role === 'user') {
+    // User: show details for their own bookings, status only for others
+    html += '<th>Details</th><th>Remaining Time</th>';
+  } else {
+    // Public: show only status and remaining time
+    html += '<th>Remaining Time</th>';
+  }
+  
+  html += '</tr></thead><tbody>';
+  slots.forEach((slot, i) => {
+    if (session && session.role === 'admin') {
+      // Admin view: show all details
+      if (slot && filterVehicle && !slot.vehicleNumber.toLowerCase().includes(filterVehicle.toLowerCase())) return;
+      const isExpired = slot && isBookingExpired(slot);
+      const statusClass = slot ? (isExpired ? 'expired' : 'booked') : 'available';
+      const statusText = slot ? (isExpired ? 'Expired' : 'Booked') : 'Available';
+      const remainingTime = slot && !isExpired ? getRemainingTime(slot) : '-';
+      
+      html += `<tr class="${statusClass}" data-slot="${i}">
+        <td>${i+1}</td>
+        <td>${statusText}</td>
+        <td>${slot ? slot.name : '-'}</td>
+        <td>${slot ? slot.vehicleNumber : '-'}</td>
+        <td>${slot ? slot.timeSlot : '-'}</td>
+        <td>${slot ? slot.bookingID : '-'}</td>
+        <td>${remainingTime}</td>
+      </tr>`;
+    } else if (session && session.role === 'user') {
+      // User view: show details for own bookings, status only for others
+      if (slot) {
+        const isExpired = isBookingExpired(slot);
+        const statusClass = isExpired ? 'expired' : 'booked';
+        const statusText = isExpired ? 'Expired' : 'Booked';
+        const remainingTime = !isExpired ? getRemainingTime(slot) : 'Expired';
+        const timeClass = isExpired ? 'expired' : (remainingTime.includes('0h') && remainingTime.includes('30m') ? 'warning' : 'active');
+        
+        // Check if this is user's own booking
+        const isOwnBooking = slot.email === session.email;
+        
+        if (isOwnBooking) {
+          // Show details for own booking
+          html += `<tr class="${statusClass}" data-slot="${i}">
+            <td>${i+1}</td>
+            <td class="status-cell ${statusClass}">${statusText} (Your Booking)</td>
+            <td class="booking-details">
+              <strong>Name:</strong> ${slot.name}<br>
+              <strong>Vehicle:</strong> ${slot.vehicleNumber}<br>
+              <strong>Time:</strong> ${slot.timeSlot}<br>
+              <strong>ID:</strong> ${slot.bookingID}
+            </td>
+            <td class="remaining-time-public ${timeClass}">${remainingTime}</td>
+          </tr>`;
+        } else {
+          // Show status only for other bookings
+          html += `<tr class="${statusClass}" data-slot="${i}">
+            <td>${i+1}</td>
+            <td class="status-cell ${statusClass}">${statusText}</td>
+            <td class="booking-details">Booked by another user</td>
+            <td class="remaining-time-public ${timeClass}">${remainingTime}</td>
+          </tr>`;
+        }
+      } else {
+        html += `<tr class="available" data-slot="${i}">
+          <td>${i+1}</td>
+          <td class="status-cell available">Available</td>
+          <td class="booking-details">-</td>
+          <td class="remaining-time-public">-</td>
+        </tr>`;
+      }
+    } else {
+      // Public view: show only status and remaining time
+      if (slot) {
+        const isExpired = isBookingExpired(slot);
+        const statusClass = isExpired ? 'expired' : 'booked';
+        const statusText = isExpired ? 'Expired' : 'Booked';
+        const remainingTime = !isExpired ? getRemainingTime(slot) : 'Expired';
+        const timeClass = isExpired ? 'expired' : (remainingTime.includes('0h') && remainingTime.includes('30m') ? 'warning' : 'active');
+        
+        html += `<tr class="${statusClass}" data-slot="${i}">
+          <td>${i+1}</td>
+          <td class="status-cell ${statusClass}">${statusText}</td>
+          <td class="remaining-time-public ${timeClass}">${remainingTime}</td>
+        </tr>`;
+      } else {
+        html += `<tr class="available" data-slot="${i}">
+          <td>${i+1}</td>
+          <td class="status-cell available">Available</td>
+          <td class="remaining-time-public">-</td>
+        </tr>`;
+      }
+    }
+  });
+  html += '</tbody></table>';
+  slotsTableContainer.innerHTML = html;
+}
+
+// --- Admin CRUD Functions ---
+function renderAdminSlotsTable() {
+  const session = getSession();
+  if (!session || session.role !== 'admin') return;
+  let html = '<table class="slots-table"><thead><tr><th>Slot No</th><th>Status</th><th>Name</th><th>Vehicle No</th><th>Time</th><th>Booking ID</th><th>Remaining Time</th><th>Actions</th></tr></thead><tbody>';
+  slots.forEach((slot, i) => {
+    const isExpired = slot && isBookingExpired(slot);
+    const statusClass = slot ? (isExpired ? 'expired' : 'booked') : 'available';
+    const statusText = slot ? (isExpired ? 'Expired' : 'Booked') : 'Available';
+    const remainingTime = slot && !isExpired ? getRemainingTime(slot) : '-';
+    
+    html += `<tr class="${statusClass}">
+      <td>${i+1}</td>
+      <td>${statusText}</td>
+      <td>${slot ? slot.name : '-'}</td>
+      <td>${slot ? slot.vehicleNumber : '-'}</td>
+      <td>${slot ? slot.timeSlot : '-'}</td>
+      <td>${slot ? slot.bookingID : '-'}</td>
+      <td>${remainingTime}</td>
+      <td>
+        <button class="editSlotBtn" data-slot="${i}">Edit</button>
+        <button class="deleteSlotBtn" data-slot="${i}">Delete</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  adminSlotsTableContainer.innerHTML = html;
+  // Attach event listeners
+  document.querySelectorAll('.deleteSlotBtn').forEach(btn => {
+    btn.onclick = function() {
+      const idx = parseInt(this.getAttribute('data-slot'));
+      slots[idx] = null;
+      renderAdminSlotsTable();
+      renderSlotsTable();
+      updateSlotDropdown();
+      saveSlots(); // Save slots after deletion
+    };
+  });
+  document.querySelectorAll('.editSlotBtn').forEach(btn => {
+    btn.onclick = function() {
+      const idx = parseInt(this.getAttribute('data-slot'));
+      const slot = slots[idx];
+      console.log('Edit button clicked for slot:', idx, 'Slot data:', slot);
+      if (!slot) { 
+        alert('No booking to edit.'); 
+        return; 
+      }
+      // Fill admin form with slot data for editing
+      document.getElementById('adminName').value = slot.name;
+      document.getElementById('adminEmail').value = slot.email || '';
+      document.getElementById('adminVehicleNumber').value = slot.vehicleNumber;
+      document.getElementById('adminVehicleType').value = slot.vehicleType;
+      document.getElementById('adminTimeSlot').value = slot.timeSlot;
+      document.getElementById('adminSlotNumber').value = idx+1;
+      // On next submit, overwrite this slot
+      adminCreateForm.setAttribute('data-edit-slot', idx);
+      // Change form title to indicate editing mode
+      const formTitle = adminCreateForm.querySelector('h3');
+      if (formTitle) {
+        formTitle.textContent = `Edit Booking - Slot ${idx+1}`;
+      }
+      // Scroll to form
+      adminCreateForm.scrollIntoView({ behavior: 'smooth' });
+      console.log('Form filled with slot data, ready for editing');
+    };
+  });
+}
+
+function updateAdminSlotDropdown() {
+  // Show all slots (1-10)
+  const adminSlotNumber = document.getElementById('adminSlotNumber');
+  adminSlotNumber.innerHTML = '<option value="">Select</option>';
+  for (let i = 0; i < slots.length; i++) {
+    adminSlotNumber.innerHTML += `<option value="${i+1}">Slot ${i+1}</option>`;
+  }
+}
+
+const adminCreateForm = document.getElementById('adminCreateForm');
+if (adminCreateForm) {
+  adminCreateForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const name = adminCreateForm.adminName.value.trim();
+    const email = adminCreateForm.adminEmail.value.trim();
+    const vehicleNumber = adminCreateForm.adminVehicleNumber.value.trim();
+    const vehicleType = adminCreateForm.adminVehicleType.value;
+    const timeSlot = adminCreateForm.adminTimeSlot.value;
+    const slotNumber = parseInt(adminCreateForm.adminSlotNumber.value) - 1;
+    if (!name || !email || !vehicleNumber || !vehicleType || !timeSlot || isNaN(slotNumber)) {
+      alert('All fields are required.');
+      return;
+    }
+    const bookingID = generateBookingID();
+    const booking = { 
+      name, 
+      email, 
+      vehicleNumber, 
+      vehicleType, 
+      timeSlot, 
+      slotNumber: slotNumber+1, 
+      bookingID,
+      bookingTime: new Date().toISOString(),
+      endTime: getBookingEndTime(timeSlot)
+    };
+    // If editing, overwrite slot
+    const editIdx = adminCreateForm.getAttribute('data-edit-slot');
+    if (editIdx !== null && editIdx !== undefined) {
+      slots[parseInt(editIdx)] = booking;
+      adminCreateForm.removeAttribute('data-edit-slot');
+      // Reset form title
+      const formTitle = adminCreateForm.querySelector('h3');
+      if (formTitle) {
+        formTitle.textContent = 'Create New Booking (Admin Only)';
+      }
+      alert('Booking updated successfully!');
+    } else {
+      // Only allow if slot is not booked
+      if (slots[slotNumber]) {
+        alert('This slot is already booked!');
+        return;
+      }
+      slots[slotNumber] = booking;
+      alert('Booking created successfully!');
+    }
+    renderAdminSlotsTable();
+    renderSlotsTable();
+    updateSlotDropdown();
+    adminCreateForm.reset();
+    saveSlots(); // Save slots after creation/update
+  });
+}
+
+function getRemainingTime(booking) {
+  const currentTime = getCurrentTime();
+  const endTime = getBookingEndTime(booking.timeSlot);
+  const remaining = endTime - currentTime;
+  
+  if (remaining <= 0) return 'Expired';
+  
+  const hours = Math.floor(remaining / 60);
+  const minutes = remaining % 60;
+  return `${hours}h ${minutes}m`;
+}
+
+// Update admin table and dropdown on login/logout
+function updateAdminUI() {
+  const session = getSession();
+  if (session && session.role === 'admin') {
+    renderAdminSlotsTable();
+    updateAdminSlotDropdown();
+    renderUsersTable();
+  } else {
+    adminSlotsTableContainer.innerHTML = '';
+    if (adminCreateForm) adminCreateForm.reset();
+    document.getElementById('usersTableContainer').innerHTML = '';
+  }
+}
+
+// --- User Management Functions ---
+function renderUsersTable() {
+  const users = getUsers();
+  let html = '<table class="slots-table"><thead><tr><th>User ID</th><th>Email</th><th>Actions</th></tr></thead><tbody>';
+  users.forEach(user => {
+    html += `<tr>
+      <td>${user.id}</td>
+      <td>${user.email}</td>
+      <td><button class="deleteUserBtn" data-userid="${user.id}">Delete</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('usersTableContainer').innerHTML = html;
+  
+  // Attach delete event listeners
+  document.querySelectorAll('.deleteUserBtn').forEach(btn => {
+    btn.onclick = function() {
+      const userId = this.getAttribute('data-userid');
+      if (confirm(`Are you sure you want to delete user: ${userId}?`)) {
+        removeUser(userId);
+        renderUsersTable();
+      }
+    };
+  });
+}
+
+// Call updateAdminUI in updateAuthUI
+const _origUpdateAuthUI = updateAuthUI;
+updateAuthUI = function() {
+  _origUpdateAuthUI();
+  updateAdminUI();
+};
+
+// --- User Booking Management ---
+function getUserBookings() {
+  const bookings = localStorage.getItem('userBookings');
+  return bookings ? JSON.parse(bookings) : [];
+}
+
+function saveUserBookings(bookings) {
+  localStorage.setItem('userBookings', JSON.stringify(bookings));
+}
+
+function addUserBooking(booking) {
+  const bookings = getUserBookings();
+  // Ensure email field is present
+  if (!booking.email) {
+    const session = getSession();
+    if (session) {
+      booking.email = session.email;
+    }
+  }
+  bookings.push(booking);
+  saveUserBookings(bookings);
+}
+
+function removeUserBooking(bookingId) {
+  const bookings = getUserBookings();
+  const filteredBookings = bookings.filter(b => b.bookingID !== bookingId);
+  saveUserBookings(filteredBookings);
+}
+
+function getUserBookingsByEmail(email) {
+  const bookings = getUserBookings();
+  return bookings.filter(b => b.email.toLowerCase() === email.toLowerCase());
+}
+
+function isUserBookingExpired(booking) {
+  const currentTime = getCurrentTime();
+  const endTime = getBookingEndTime(booking.timeSlot);
+  return currentTime >= endTime;
+}
+
+function releaseExpiredUserBookings() {
+  const bookings = getUserBookings();
+  const activeBookings = bookings.filter(b => !isUserBookingExpired(b));
+  if (activeBookings.length !== bookings.length) {
+    saveUserBookings(activeBookings);
+    console.log('Expired user bookings removed');
+  }
+}
+
+// --- User Bookings Display ---
+function renderUserBookings() {
+  const session = getSession();
+  if (!session || session.role !== 'user') return;
+  
+  const userBookings = getUserBookingsByEmail(session.email);
+  let html = '<table class="slots-table"><thead><tr><th>Slot No</th><th>Status</th><th>Name</th><th>Vehicle No</th><th>Time</th><th>Booking ID</th><th>Remaining Time</th><th>Actions</th></tr></thead><tbody>';
+  
+  userBookings.forEach(booking => {
+    const isExpired = isUserBookingExpired(booking);
+    const statusClass = isExpired ? 'expired' : 'booked';
+    const statusText = isExpired ? 'Expired' : 'Active';
+    const remainingTime = !isExpired ? getRemainingTime(booking) : 'Expired';
+    
+    html += `<tr class="${statusClass}">
+      <td>${booking.slotNumber}</td>
+      <td>${statusText}</td>
+      <td>${booking.name}</td>
+      <td>${booking.vehicleNumber}</td>
+      <td>${booking.timeSlot}</td>
+      <td>${booking.bookingID}</td>
+      <td class="remaining-time" data-booking-id="${booking.bookingID}">${remainingTime}</td>
+      <td>
+        <button class="cancelBookingBtn" data-bookingid="${booking.bookingID}">Cancel</button>
+      </td>
+    </tr>`;
+  });
+  
+  if (userBookings.length === 0) {
+    html += '<tr><td colspan="8" style="text-align:center;">No bookings found</td></tr>';
+  }
+  
+  html += '</tbody></table>';
+  myBookingsTableContainer.innerHTML = html;
+  
+  // Attach cancel event listeners
+  document.querySelectorAll('.cancelBookingBtn').forEach(btn => {
+    btn.onclick = function() {
+      const bookingId = this.getAttribute('data-bookingid');
+      const booking = userBookings.find(b => b.bookingID === bookingId);
+      if (booking && confirm(`Cancel booking for slot ${booking.slotNumber}?`)) {
+        // Remove from user bookings
+        removeUserBooking(bookingId);
+        // Remove from slots if it's still there
+        const slotIndex = booking.slotNumber - 1;
+        if (slots[slotIndex] && slots[slotIndex].bookingID === bookingId) {
+          slots[slotIndex] = null;
+        }
+        renderUserBookings();
+        renderSlotsTable();
+        updateSlotDropdown();
+        alert('Booking cancelled successfully!');
+        saveSlots(); // Save slots after cancellation
+      }
+    };
+  });
+  
+  // Start countdown timer for active bookings
+  startUserBookingCountdown();
+}
+
+// --- Real-time Countdown for User Bookings ---
+function startUserBookingCountdown() {
+  const session = getSession();
+  if (!session || session.role !== 'user') return;
+  
+  const userBookings = getUserBookingsByEmail(session.email);
+  const activeBookings = userBookings.filter(b => !isUserBookingExpired(b));
+  
+  if (activeBookings.length > 0) {
+    // Update countdown every 30 seconds
+    setInterval(() => {
+      activeBookings.forEach(booking => {
+        const timeElement = document.querySelector(`[data-booking-id="${booking.bookingID}"]`);
+        if (timeElement) {
+          const remainingTime = getRemainingTime(booking);
+          timeElement.textContent = remainingTime;
+          
+          // Change color based on remaining time
+          if (remainingTime === 'Expired') {
+            timeElement.style.color = 'red';
+            timeElement.style.fontWeight = 'bold';
+          } else if (remainingTime.includes('0h') && remainingTime.includes('30m')) {
+            timeElement.style.color = 'orange';
+            timeElement.style.fontWeight = 'bold';
+          } else {
+            timeElement.style.color = 'green';
+          }
+        }
+      });
+    }, 30000); // Update every 30 seconds
+  }
+}
+
+// --- Real-time Public Countdown ---
+function updatePublicRemainingTime() {
+  const session = getSession();
+  if (session && session.role === 'admin') return; // Skip for admin view
+  
+  slots.forEach((slot, index) => {
+    const row = document.querySelector(`[data-slot="${index}"]`);
+    if (!row) return;
+    
+    const statusCell = row.querySelector('.status-cell');
+    const timeCell = row.querySelector('.remaining-time-public');
+    
+    if (slot) {
+      const isExpired = isBookingExpired(slot);
+      const statusText = isExpired ? 'Expired' : 'Booked';
+      const remainingTime = !isExpired ? getRemainingTime(slot) : 'Expired';
+      
+      // Update status cell
+      if (statusCell) {
+        statusCell.textContent = statusText;
+        statusCell.className = `status-cell ${isExpired ? 'expired' : 'booked'}`;
+      }
+      
+      // Update time cell
+      if (timeCell) {
+        timeCell.textContent = remainingTime;
+        timeCell.className = 'remaining-time-public';
+        
+        if (isExpired) {
+          timeCell.classList.add('expired');
+        } else if (remainingTime.includes('0h') && remainingTime.includes('30m')) {
+          timeCell.classList.add('warning');
+        } else {
+          timeCell.classList.add('active');
+        }
+      }
+      
+      // Update row class
+      row.className = isExpired ? 'expired' : 'booked';
+    } else {
+      // Slot is available
+      if (statusCell) {
+        statusCell.textContent = 'Available';
+        statusCell.className = 'status-cell available';
+      }
+      if (timeCell) {
+        timeCell.textContent = '-';
+        timeCell.className = 'remaining-time-public';
+      }
+      row.className = 'available';
+    }
+  });
+}
+
+// Update public countdown every minute
+setInterval(updatePublicRemainingTime, 60000);
+
+// --- Event Listeners ---
+// Populate slot dropdown on load
+updateSlotDropdown();
+renderSlotsTable();
+updateAuthUI();
+
+// Booking form event listener moved to addEventListeners function
+
+// Receipt modal and other event listeners moved to addEventListeners function
+
+// Dark mode toggle function
+function setDarkMode(on) {
+  document.body.classList.toggle('dark-mode', on);
+  localStorage.setItem('darkMode', on ? '1' : '0');
+  darkModeToggle.textContent = on ? '☀️' : '🌙';
+}
+
+// Load dark mode preference
+setDarkMode(localStorage.getItem('darkMode') === '1'); 
+
+// --- Demo Functions ---
+function createSampleBookings() {
+  // Clear existing slots
+  slots.fill(null);
+  
+  // Create sample bookings
+  slots[0] = {
+    name: 'John Doe',
+    vehicleNumber: 'ABC123',
+    slotNumber: 1,
+    bookingID: 'BK123456',
+    timeSlot: '9:00 AM-11:00 AM',
+    bookingTime: new Date().toISOString()
+  };
+  
+  slots[2] = {
+    name: 'Jane Smith',
+    vehicleNumber: 'XYZ789',
+    slotNumber: 3,
+    bookingID: 'BK789012',
+    timeSlot: '2:00 PM-4:00 PM',
+    bookingTime: new Date().toISOString()
+  };
+  
+  slots[4] = {
+    name: 'Mike Johnson',
+    vehicleNumber: 'DEF456',
+    slotNumber: 5,
+    bookingID: 'BK345678',
+    timeSlot: 'Whole Day',
+    bookingTime: new Date().toISOString()
+  };
+  
+  // Update displays and save
+  renderSlotsTable();
+  renderAdminSlotsTable();
+  updateSlotDropdown();
+  saveSlots();
+  console.log('Sample bookings created and saved to localStorage');
+}
+
+// Demo and reset button event listeners moved to addEventListeners function 
+
+function clearAllSlots() {
+  slots.fill(null);
+  saveSlots();
+  renderSlotsTable();
+  renderAdminSlotsTable();
+  updateSlotDropdown();
+  console.log('All slots cleared and saved to localStorage');
+}
+
+function resetSlots() {
+  if (confirm('Are you sure you want to reset all slots? This will clear all bookings.')) {
+    clearAllSlots();
+    alert('All slots have been reset!');
+  }
+} 
+
+// --- Image Receipt Generation ---
+function generateImageReceipt() {
+  // Get current booking from receipt modal
+  const receiptContent = receiptDetails.innerHTML;
+  if (!receiptContent) {
+    alert('No booking receipt available to download!');
+    return;
+  }
+  
+  // Show loading state
+  const downloadBtn = document.getElementById('downloadReceipt');
+  const originalText = downloadBtn.innerHTML;
+  downloadBtn.innerHTML = '⏳ Generating Image...';
+  downloadBtn.disabled = true;
+  downloadBtn.style.background = '#6c757d';
+  
+  // Get current date and time
+  const now = new Date();
+  const currentDate = now.toLocaleDateString('en-IN');
+  const currentTime = now.toLocaleTimeString('en-IN');
+  
+  // Extract booking details from receipt content
+  const nameMatch = receiptContent.match(/<strong>Name:<\/strong> ([^<]+)/);
+  const emailMatch = receiptContent.match(/<strong>Email:<\/strong> ([^<]+)/);
+  const vehicleMatch = receiptContent.match(/<strong>Vehicle No:<\/strong> ([^<]+)/);
+  const slotMatch = receiptContent.match(/<strong>Slot No:<\/strong> ([^<]+)/);
+  const bookingIdMatch = receiptContent.match(/<strong>Booking ID:<\/strong> ([^<]+)/);
+  const timeMatch = receiptContent.match(/<strong>Time:<\/strong> ([^<]+)/);
+  
+  const name = nameMatch ? nameMatch[1].trim() : 'N/A';
+  let email = emailMatch ? emailMatch[1].trim() : 'N/A';
+  
+  // If email is 'N/A', try to get from current session
+  if (email === 'N/A') {
+    const session = getSession();
+    if (session && session.email) {
+      email = session.email;
+    }
+  }
+  
+  const vehicle = vehicleMatch ? vehicleMatch[1].trim() : 'N/A';
+  const slot = slotMatch ? slotMatch[1].trim() : 'N/A';
+  const bookingId = bookingIdMatch ? bookingIdMatch[1].trim() : 'N/A';
+  const time = timeMatch ? timeMatch[1].trim() : 'N/A';
+  
+  console.log('Extracted booking details:', { name, email, vehicle, slot, bookingId, time });
+  
+  // Create a temporary container for image generation
+  const imageContainer = document.createElement('div');
+  imageContainer.style.cssText = `
+    padding: 30px;
+    font-family: Arial, sans-serif;
+    width: 600px;
+    background-color: white;
+    color: black;
+    font-size: 16px;
+    line-height: 1.6;
+    border: 2px solid #333;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  `;
+  
+  // Create professional receipt HTML
+  imageContainer.innerHTML = `
+    <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #2c3e50; padding-bottom: 20px;">
+      <h1 style="color: #2c3e50; margin: 0; font-size: 32px; font-weight: bold;">🅿️ Smart Parking System</h1>
+      <p style="color: #7f8c8d; margin: 8px 0; font-size: 18px; font-weight: bold;">Online Parking Booking Receipt</p>
+      <p style="color: #95a5a6; margin: 5px 0; font-size: 14px;">Generated on: ${currentDate} at ${currentTime}</p>
+    </div>
+    
+    <div style="background: #ecf0f1; padding: 25px; border-radius: 10px; margin-bottom: 25px; border-left: 5px solid #3498db;">
+      <h2 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 24px; font-weight: bold;">📋 Booking Details</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+        <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #bdc3c7;">
+          <p style="margin: 8px 0; font-size: 16px; color: #34495e;"><strong>Name:</strong> ${name}</p>
+          <p style="margin: 8px 0; font-size: 16px; color: #34495e;"><strong>Email:</strong> ${email}</p>
+          <p style="margin: 8px 0; font-size: 16px; color: #34495e;"><strong>Vehicle No:</strong> ${vehicle}</p>
+        </div>
+        <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #bdc3c7;">
+          <p style="margin: 8px 0; font-size: 16px; color: #34495e;"><strong>Slot No:</strong> ${slot}</p>
+          <p style="margin: 8px 0; font-size: 16px; color: #34495e;"><strong>Booking ID:</strong> ${bookingId}</p>
+        </div>
+      </div>
+      <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #bdc3c7; margin-top: 15px;">
+        <p style="margin: 8px 0; font-size: 16px; color: #34495e;"><strong>Time Slot:</strong> ${time}</p>
+      </div>
+    </div>
+    
+    <div style="background: #e8f5e8; padding: 20px; border-radius: 10px; margin-bottom: 25px; border-left: 5px solid #27ae60;">
+      <h3 style="color: #27ae60; margin: 0 0 15px 0; font-size: 20px; font-weight: bold;">✅ Booking Confirmed</h3>
+      <p style="margin: 8px 0; color: #2c3e50; font-size: 16px;">Your parking slot has been successfully booked.</p>
+      <p style="margin: 8px 0; color: #2c3e50; font-size: 16px;">Please arrive on time and display this receipt if required.</p>
+    </div>
+    
+    <div style="background: #fff3cd; padding: 20px; border-radius: 10px; margin-bottom: 25px; border-left: 5px solid #f39c12;">
+      <h3 style="color: #856404; margin: 0 0 15px 0; font-size: 20px; font-weight: bold;">⚠️ Important Notes</h3>
+      <ul style="margin: 8px 0; padding-left: 25px; color: #856404; font-size: 16px;">
+        <li>Keep this receipt for your records</li>
+        <li>Booking expires automatically after the time slot</li>
+        <li>Contact admin for any issues or modifications</li>
+        <li>Parking is subject to availability and terms</li>
+      </ul>
+    </div>
+    
+    <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #bdc3c7;">
+      <p style="color: #7f8c8d; margin: 8px 0; font-size: 14px; font-weight: bold;">Thank you for using Smart Parking System</p>
+      <p style="color: #95a5a6; margin: 5px 0; font-size: 12px;">For support: kanadegaurav81@gmail.com</p>
+    </div>
+  `;
+  
+  // Add container to body temporarily
+  document.body.appendChild(imageContainer);
+  
+  // Generate image using html2canvas
+  html2canvas(imageContainer, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: '#ffffff',
+    width: 600,
+    height: imageContainer.scrollHeight
+  }).then(canvas => {
+    // Convert canvas to blob
+    canvas.toBlob(function(blob) {
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `parking_receipt_${Date.now()}.png`;
+      
+      // Trigger download
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up
+      URL.revokeObjectURL(url);
+      document.body.removeChild(imageContainer);
+      
+      console.log('Image receipt generated and downloaded successfully');
+      
+      // Reset button state
+      downloadBtn.innerHTML = '✅ Image Downloaded!';
+      downloadBtn.style.background = '#28a745';
+      setTimeout(() => {
+        downloadBtn.innerHTML = originalText;
+        downloadBtn.disabled = false;
+      }, 2000);
+    }, 'image/png', 0.95);
+  }).catch(error => {
+    console.error('Error generating image:', error);
+    alert('Error generating image. Please try again.');
+    
+    // Clean up on error
+    if (document.body.contains(imageContainer)) {
+      document.body.removeChild(imageContainer);
+    }
+    
+    // Reset button state
+    downloadBtn.innerHTML = originalText;
+    downloadBtn.disabled = false;
+    downloadBtn.style.background = '#28a745';
+  });
+} 
+
+// --- Receipt Download Functions ---
+function showUserReceiptDownload() {
+  const session = getSession();
+  if (!session || session.role !== 'user') return;
+  
+  // Get user's bookings
+  const userBookings = getUserBookingsByEmail(session.email);
+  
+  if (userBookings.length === 0) {
+    alert('You have no bookings to download receipts for.');
+    return;
+  }
+  
+  // Get the most recent booking
+  const mostRecentBooking = userBookings.sort((a, b) => 
+    new Date(b.bookingTime) - new Date(a.bookingTime)
+  )[0];
+  
+  // Show receipt and download directly
+  showReceipt(mostRecentBooking);
+  setTimeout(() => {
+    generateImageReceipt();
+  }, 500);
+}
+
+function showAdminReceiptDownload() {
+  const session = getSession();
+  if (!session || session.role !== 'admin') return;
+  
+  // Get all bookings from slots
+  const allBookings = slots.filter(slot => slot !== null);
+  
+  if (allBookings.length === 0) {
+    alert('No bookings found to download receipts for.');
+    return;
+  }
+  
+  // Create selection modal
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+  `;
+  
+  const content = document.createElement('div');
+  content.style.cssText = `
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+  `;
+  
+  content.innerHTML = `
+    <h2 style="margin: 0 0 20px 0; color: #2c3e50;">📷 Download Any Receipt</h2>
+    <p style="margin-bottom: 20px; color: #7f8c8d;">Select a booking to download receipt:</p>
+    <div id="adminBookingsList"></div>
+    <div style="text-align: center; margin-top: 20px;">
+      <button id="cancelDownload" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-right: 10px;">Cancel</button>
+    </div>
+  `;
+  
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+  
+  // Populate bookings list
+  const bookingsList = content.querySelector('#adminBookingsList');
+  allBookings.forEach((booking, index) => {
+    const bookingDiv = document.createElement('div');
+    bookingDiv.style.cssText = `
+      background: #f8f9fa;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 8px;
+      border-left: 4px solid #007bff;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    `;
+    bookingDiv.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <strong>${booking.name}</strong> - ${booking.vehicleNumber}<br>
+          <small>Slot ${booking.slotNumber} | ${booking.timeSlot}</small><br>
+          <small>ID: ${booking.bookingID} | Email: ${booking.email || 'kanadegaurav81@gmail.com'}</small>
+        </div>
+        <button onclick="downloadAdminReceipt('${booking.bookingID}')" style="background: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer;">Download</button>
+      </div>
+    `;
+    bookingsList.appendChild(bookingDiv);
+  });
+  
+  // Close modal
+  content.querySelector('#cancelDownload').onclick = () => {
+    document.body.removeChild(modal);
+  };
+  
+  // Close on outside click
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      document.body.removeChild(modal);
+    }
+  };
+}
+
+// Global functions for download buttons
+window.downloadAdminReceipt = function(bookingId) {
+  const booking = slots.find(slot => slot && slot.bookingID === bookingId);
+  
+  if (booking) {
+    showReceipt(booking);
+    setTimeout(() => {
+      generateImageReceipt();
+    }, 500);
+  }
+  
+  // Close modal
+  const modals = document.querySelectorAll('[style*="z-index: 10000"]');
+  modals.forEach(modal => document.body.removeChild(modal));
+}; 
