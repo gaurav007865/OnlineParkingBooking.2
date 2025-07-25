@@ -174,14 +174,15 @@ function removeUser(userId) {
 
 // --- User Registration ---
 function registerUser(id, email, password) {
-  const users = getUsers();
-  const existingUser = users.find(u => u.id === id || u.email === email);
-  if (existingUser) {
-    return { success: false, message: 'User ID or Email already exists!' };
-  }
-  const newUser = { id, email, password, role: 'user' };
-  addUser(newUser);
-  return { success: true, message: 'User registered successfully!' };
+  // Use backend API for registration
+  return fetch('http://localhost:3001/api/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, email, password, role: 'user' })
+  })
+    .then(res => res.json())
+    .then(data => data)
+    .catch(() => ({ success: false, message: 'Server error' }));
 }
 
 // --- Login Modal Logic ---
@@ -198,38 +199,41 @@ loginModal.addEventListener('click', function(e) {
 
 // Wait for DOM to be ready
 // Initialize everything on page load
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
   console.log('Page loaded, initializing parking system...');
-  
-  // 1. Load slots from localStorage
-  loadSlots();
-  
-  // 2. Release expired slots
-  releaseExpiredSlots();
-  
-  // 3. Render initial displays
+  // 1. Fetch slots/bookings from backend
+  await fetchAndRenderSlots();
+  // 2. Render initial displays
   renderSlotsTable();
   renderUserBookings();
   updateSlotDropdown();
-  
-  // 4. Update auth UI
+  // 3. Update auth UI
   updateAuthUI();
-  
-  // 5. Add event listeners
+  // 4. Add event listeners
   addEventListeners();
-  
   console.log('Parking system initialized successfully');
 });
 
 // Add all event listeners
 function addEventListeners() {
   // Add a message area below the login form
+  const loginForm = document.getElementById('loginForm');
+  const signupForm = document.getElementById('signupForm');
+  const showSignupBtn = document.getElementById('showSignupBtn');
+  const showLoginBtn = document.getElementById('showLoginBtn');
   let loginMessage = document.getElementById('loginMessage');
   if (!loginMessage) {
     loginMessage = document.createElement('div');
     loginMessage.id = 'loginMessage';
     loginMessage.style.marginTop = '1rem';
     loginForm.appendChild(loginMessage);
+  }
+  let signupMessage = document.getElementById('signupMessage');
+  if (!signupMessage) {
+    signupMessage = document.createElement('div');
+    signupMessage.id = 'signupMessage';
+    signupMessage.style.marginTop = '1rem';
+    signupForm.appendChild(signupMessage);
   }
 
   // Add show/hide password functionality
@@ -244,7 +248,7 @@ function addEventListeners() {
   }
 
   // Login form
-  loginForm.addEventListener('submit', function(e) {
+  loginForm.addEventListener('submit', async function(e) {
     e.preventDefault();
     loginMessage.textContent = '';
     loginMessage.style.color = '';
@@ -272,95 +276,91 @@ function addEventListeners() {
         loginMessage.style.color = 'red';
         return;
       }
-    } else if (role === 'user') {
-      const users = getUsers();
-      const found = users.find(u =>
-        u.id.toLowerCase() === id.toLowerCase() &&
-        u.email.toLowerCase() === email.toLowerCase() &&
-        u.password === password
-      );
-      if (!found) {
-        // Auto-register new user
-        const result = registerUser(id, email, password);
-        if (result.success) {
-          loginMessage.textContent = 'New user registered and logged in!';
-          loginMessage.style.color = 'green';
-        } else {
-          loginMessage.textContent = result.message;
-          loginMessage.style.color = 'red';
-          return;
-        }
-      }
+      setSession({ id, email, role });
+      loginMessage.textContent = 'Login successful!';
+      loginMessage.style.color = 'green';
+      setTimeout(() => {
+        loginModal.style.display = 'none';
+        loginMessage.textContent = '';
+        updateAuthUI();
+      }, 1000);
+      return;
     }
-    
-    setSession({ id, email, role });
-    loginMessage.textContent = 'Login successful!';
-    loginMessage.style.color = 'green';
-    setTimeout(() => {
-      loginModal.style.display = 'none';
-      loginMessage.textContent = '';
-      updateAuthUI();
-    }, 1000);
+    // User login via backend
+    fetch('http://localhost:3001/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, email, password, role })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setSession({ id, email, role });
+          loginMessage.textContent = 'Login successful!';
+          loginMessage.style.color = 'green';
+          setTimeout(() => {
+            loginModal.style.display = 'none';
+            loginMessage.textContent = '';
+            updateAuthUI();
+          }, 1000);
+        } else {
+          loginMessage.textContent = data.message || 'Login failed.';
+          loginMessage.style.color = 'red';
+        }
+      })
+      .catch(() => {
+        loginMessage.textContent = 'Server error.';
+        loginMessage.style.color = 'red';
+      });
   });
 
   // Booking form
-  bookingForm.addEventListener('submit', function(e) {
+  bookingForm.addEventListener('submit', async function(e) {
     e.preventDefault();
     console.log('Booking form submitted');
-    
     const session = getSession();
     if (!session) {
       alert('Please login first!');
       return;
     }
-    
     const slotNumber = parseInt(slotNumberSelect.value);
     const name = bookingForm.name.value;
     const vehicleNumber = bookingForm.vehicleNumber.value;
     const timeSlot = bookingForm.timeSlot.value;
-    
-    console.log('Booking details:', { slotNumber, name, vehicleNumber, timeSlot });
-    
     if (!slotNumber || !name || !vehicleNumber || !timeSlot) {
       alert('Please fill all fields!');
       return;
     }
-    
-    const slotIndex = slotNumber - 1;
-    if (slots[slotIndex]) {
-      alert('Slot is already booked!');
-      return;
-    }
-    
     const booking = {
       name,
+      email: session.email,
       vehicleNumber,
       slotNumber,
-      bookingID: generateBookingID(),
       timeSlot,
-      bookingTime: new Date().toISOString(),
-      email: session.email // Add user's email to identify own bookings
+      bookingID: generateBookingID(),
+      bookingTime: new Date().toISOString()
     };
-    
-    console.log('Creating booking:', booking);
-    
-    slots[slotIndex] = booking;
-    
-    // Add to user bookings if user
-    if (session.role === 'user') {
-      addUserBooking(booking);
+    try {
+      const res = await fetch('http://localhost:3001/api/book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(booking)
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Booking successful!');
+        showReceipt(data.booking);
+        bookingForm.reset();
+        // Optionally, refresh bookings from backend
+        await fetchAndRenderSlots();
+        await fetchAndRenderUserBookings();
+        await fetchAndRenderAdminSlots();
+      } else {
+        alert(data.message || 'Booking failed.');
+      }
+    } catch (err) {
+      alert('Server error.');
     }
-    
-    // Save to localStorage
-    saveSlots();
-    console.log('Booking saved to localStorage');
-    
-    // Update displays
-    renderSlotsTable();
-    renderAdminSlotsTable();
-    updateSlotDropdown();
-    showReceipt(booking);
-    bookingForm.reset();
   });
 
   // Demo button
@@ -435,6 +435,67 @@ function addEventListeners() {
   sendEmailBtn.addEventListener('click', function() {
     // Placeholder for EmailJS integration
     alert('Email sending coming soon!');
+  });
+
+  // Toggle Login/Signup forms
+  if (showSignupBtn) {
+    showSignupBtn.addEventListener('click', function() {
+      loginForm.style.display = 'none';
+      signupForm.style.display = 'block';
+      loginMessage.textContent = '';
+    });
+  }
+  if (showLoginBtn) {
+    showLoginBtn.addEventListener('click', function() {
+      signupForm.style.display = 'none';
+      loginForm.style.display = 'block';
+      signupMessage.textContent = '';
+    });
+  }
+  // Signup form submit
+  signupForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    signupMessage.textContent = '';
+    signupMessage.style.color = '';
+    const id = signupForm.signupId.value.trim();
+    const email = signupForm.signupEmail.value.trim();
+    const password = signupForm.signupPassword.value.trim();
+    const role = signupForm.signupRole.value;
+    if (!id || !email || !password || !role) {
+      signupMessage.textContent = 'All fields are required.';
+      signupMessage.style.color = 'red';
+      return;
+    }
+    if (role !== 'user') {
+      signupMessage.textContent = 'Only user role is allowed for signup.';
+      signupMessage.style.color = 'red';
+      return;
+    }
+    // Use backend API for registration
+    try {
+      const res = await fetch('http://localhost:3001/api/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, email, password, role })
+      });
+      const data = await res.json();
+      if (data.success) {
+        signupMessage.textContent = 'Sign up successful! You can now login.';
+        signupMessage.style.color = 'green';
+        setTimeout(() => {
+          signupForm.reset();
+          signupForm.style.display = 'none';
+          loginForm.style.display = 'block';
+          signupMessage.textContent = '';
+        }, 1200);
+      } else {
+        signupMessage.textContent = data.message || 'Sign up failed.';
+        signupMessage.style.color = 'red';
+      }
+    } catch (err) {
+      signupMessage.textContent = 'Server error.';
+      signupMessage.style.color = 'red';
+    }
   });
 }
 
@@ -590,11 +651,11 @@ function renderSlotsTable(filterVehicle = '') {
 }
 
 // --- Admin CRUD Functions ---
-function renderAdminSlotsTable() {
+function renderAdminSlotsTable(bookings = slots) {
   const session = getSession();
   if (!session || session.role !== 'admin') return;
   let html = '<table class="slots-table"><thead><tr><th>Slot No</th><th>Status</th><th>Name</th><th>Vehicle No</th><th>Time</th><th>Booking ID</th><th>Remaining Time</th><th>Actions</th></tr></thead><tbody>';
-  slots.forEach((slot, i) => {
+  bookings.forEach((slot, i) => {
     const isExpired = slot && isBookingExpired(slot);
     const statusClass = slot ? (isExpired ? 'expired' : 'booked') : 'available';
     const statusText = slot ? (isExpired ? 'Expired' : 'Booked') : 'Available';
@@ -749,17 +810,17 @@ function updateAdminUI() {
 // --- User Management Functions ---
 function renderUsersTable() {
   const users = getUsers();
-  let html = '<table class="slots-table"><thead><tr><th>User ID</th><th>Email</th><th>Actions</th></tr></thead><tbody>';
+  let html = '<table class="slots-table"><thead><tr><th>User ID</th><th>Email</th><th><b>Password</b></th><th>Actions</th></tr></thead><tbody>';
   users.forEach(user => {
     html += `<tr>
       <td>${user.id}</td>
       <td>${user.email}</td>
+      <td>${user.password || ''}</td>
       <td><button class="deleteUserBtn" data-userid="${user.id}">Delete</button></td>
     </tr>`;
   });
   html += '</tbody></table>';
   document.getElementById('usersTableContainer').innerHTML = html;
-  
   // Attach delete event listeners
   document.querySelectorAll('.deleteUserBtn').forEach(btn => {
     btn.onclick = function() {
@@ -829,14 +890,13 @@ function releaseExpiredUserBookings() {
 }
 
 // --- User Bookings Display ---
-function renderUserBookings() {
+function renderUserBookings(bookings = getUserBookings()) {
   const session = getSession();
   if (!session || session.role !== 'user') return;
   
-  const userBookings = getUserBookingsByEmail(session.email);
   let html = '<table class="slots-table"><thead><tr><th>Slot No</th><th>Status</th><th>Name</th><th>Vehicle No</th><th>Time</th><th>Booking ID</th><th>Remaining Time</th><th>Actions</th></tr></thead><tbody>';
   
-  userBookings.forEach(booking => {
+  bookings.forEach(booking => {
     const isExpired = isUserBookingExpired(booking);
     const statusClass = isExpired ? 'expired' : 'booked';
     const statusText = isExpired ? 'Expired' : 'Active';
@@ -856,7 +916,7 @@ function renderUserBookings() {
     </tr>`;
   });
   
-  if (userBookings.length === 0) {
+  if (bookings.length === 0) {
     html += '<tr><td colspan="8" style="text-align:center;">No bookings found</td></tr>';
   }
   
@@ -867,7 +927,7 @@ function renderUserBookings() {
   document.querySelectorAll('.cancelBookingBtn').forEach(btn => {
     btn.onclick = function() {
       const bookingId = this.getAttribute('data-bookingid');
-      const booking = userBookings.find(b => b.bookingID === bookingId);
+      const booking = bookings.find(b => b.bookingID === bookingId);
       if (booking && confirm(`Cancel booking for slot ${booking.slotNumber}?`)) {
         // Remove from user bookings
         removeUserBooking(bookingId);
@@ -1352,3 +1412,20 @@ window.downloadAdminReceipt = function(bookingId) {
   const modals = document.querySelectorAll('[style*="z-index: 10000"]');
   modals.forEach(modal => document.body.removeChild(modal));
 }; 
+
+// Helper: Fetch all bookings from backend and update slots array
+async function fetchAndRenderSlots() {
+  try {
+    const res = await fetch('http://localhost:3001/api/bookings');
+    const data = await res.json();
+    if (data.success) {
+      slots = Array(10).fill(null);
+      data.bookings.forEach(b => {
+        if (b.slotNumber >= 1 && b.slotNumber <= 10) {
+          slots[b.slotNumber - 1] = b;
+        }
+      });
+      renderSlotsTable();
+    }
+  } catch {}
+} 
