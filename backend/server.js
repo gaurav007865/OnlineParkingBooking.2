@@ -2,10 +2,17 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
+const path = require('path');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: ['http://127.0.0.1:3000', 'http://localhost:3000'],
+  credentials: true
+}));
 app.use(bodyParser.json());
+
+// Serve static files (images, favicon, etc.) from project root
+app.use(express.static(path.join(__dirname, '../')));
 
 // MongoDB connection
 const mongoURI = 'mongodb+srv://kanadegaurav81:uLOvhJvsaQTnuH6B@cluster0.mbkjgn7.mongodb.net/My_Data1?retryWrites=true&w=majority&appName=Cluster0';
